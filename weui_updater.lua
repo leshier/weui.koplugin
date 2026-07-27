@@ -476,10 +476,15 @@ local function _applyUpdate(download_url, new_version)
     end
 
     if ok_tr and Trapper and Trapper.dismissableRunInSubprocess then
+        -- We run from a menu/ConfirmBox callback (no Trapper:wrap), so
+        -- dismissableRunInSubprocess falls back to a blocking in-process run.
+        -- The 3rd arg is task_returns_simple_string (bool), not a callback;
+        -- the result is handled via the return value below. Paint the toast
+        -- before the blocking network call so the user sees "Downloading…".
+        UIManager:forceRePaint()
         local completed, result = Trapper:dismissableRunInSubprocess(
             doDownloadAndInstall,
-            progress_msg,
-            function(res) handleInstallResult(res) end
+            progress_msg
         )
         if completed and result then
             UIManager:scheduleIn(0.2, function() handleInstallResult(result) end)
@@ -678,10 +683,12 @@ function M._doManualCheck(current)
     end
 
     if ok_tr and Trapper and Trapper.dismissableRunInSubprocess then
+        -- See _applyUpdate: blocking in-process fallback (no Trapper:wrap).
+        -- Paint "Checking for updates…" before the blocking call.
+        UIManager:forceRePaint()
         local completed, result = Trapper:dismissableRunInSubprocess(
             _doFetch,
-            checking_msg,
-            function(res) handleCheckResult(res) end
+            checking_msg
         )
         if completed and result then
             UIManager:scheduleIn(0.2, function() handleCheckResult(result) end)

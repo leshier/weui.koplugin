@@ -366,6 +366,13 @@ end
 
 function Downloader:cancelTask(task)
     if not task then return end
+    -- Don't touch a task that already reached a terminal state. The
+    -- detail-dialog "Cancel download" button can linger after a download
+    -- finished (that dialog doesn't auto-refresh/close on completion), and
+    -- without this guard it would flip a "done"/"failed" task to "cancelled".
+    if task.status == "done" or task.status == "failed" or task.status == "cancelled" then
+        return
+    end
     task.cancelled = true
     if task.dl then
         task.dl.cancelled = true
@@ -485,17 +492,32 @@ end
 function Downloader:_scheduleGuarded(dl, step_fn, delay)
     UIManager:scheduleIn(delay or 0.1, function()
         local ok, err = xpcall(step_fn, debug.traceback)
-        if not ok and dl.standby_guard then
+        if ok then return end
+        -- A step threw. Always log it. Release the standby guard only if the
+        -- step hadn't already released it: the _step completion path calls
+        -- _releaseStandby before its post-save work (flush, refresh_shelf,
+        -- _updateTask, ConfirmBox), so a throw there leaves standby_guard nil
+        -- and the old `if not ok and dl.standby_guard` gate would silently
+        -- swallow the error, leaving the task stuck "running".
+        if dl.standby_guard then
             self:_releaseStandby(dl)
-            logger.err(LOG_MODULE, "download step failed:", log_error(err))
-            self:_updateTask(dl.task, {
+        end
+        logger.err(LOG_MODULE, "download step failed:", log_error(err))
+        -- Only flip to "failed" if the task isn't already terminal. A throw
+        -- in post-completion UI code (after a successful save) must not
+        -- overwrite a "done" task whose EPUB was already written.
+        local task = dl.task
+        local terminal = task and (task.status == "done"
+            or task.status == "failed" or task.status == "cancelled")
+        if not terminal then
+            self:_updateTask(task, {
                 status = "failed",
                 stage = _("Download failed"),
                 error = display_error(err),
             })
             self.show_info(T(_("Download failed:\n%1"), display_error(err)))
-            self:_trimFinishedTasks()
         end
+        self:_trimFinishedTasks()
     end)
 end
 

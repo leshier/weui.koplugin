@@ -2322,7 +2322,6 @@ function WeReadPlugin:showShelfPage()
     -- Pre-make the book icons (SVG vector, instant, no network)
     local book_icon = make_menu_icon(Config.ICON.weread_book)
     local book_icon_cached = make_menu_icon(Config.ICON.weread_book_cached)
-    logger.info(LOG_MODULE, "shelf icons: book=", book_icon ~= nil, "cached=", book_icon_cached ~= nil)
 
     local function refresh()
         menu:switchItemTable(nil, buildItems())
