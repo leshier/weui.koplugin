@@ -291,7 +291,12 @@ function Downloader:_updateTask(task, fields)
     end
     task.updated_at = os.time()
     self:_syncTaskDialog(task)
-    if task.dialog and (task.status == "done" or task.status == "cancelled"
+    -- Close the progress window on ANY terminal state, including "failed".
+    -- Otherwise a failed download leaves the window open with a now-defunct
+    -- "Cancel download" button (cancelTask is a no-op on terminal tasks),
+    -- and the user cannot dismiss the window.
+    if task.dialog and (task.status == "done" or task.status == "failed"
+        or task.status == "cancelled"
         or (task.output_path and task.output_path ~= "")) then
         task.dialog:close()
         task.dialog = nil
@@ -414,6 +419,16 @@ function Downloader:showTask(task)
                 text = _("Cancel download"),
                 callback = function()
                     self:cancelTask(task)
+                    -- cancelTask is a no-op once the task reached a terminal
+                    -- state (e.g. it failed while this window was open and
+                    -- the window didn't auto-close yet). Close the window so
+                    -- the user is never stuck on it.
+                    if task.status ~= "queued" and task.status ~= "running" then
+                        if task.dialog then
+                            task.dialog:close()
+                            task.dialog = nil
+                        end
+                    end
                 end,
             },
         })
