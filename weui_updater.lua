@@ -42,6 +42,15 @@ local _DEFAULT_API_URL = string.format(
     GITHUB_OWNER, GITHUB_REPO
 )
 
+-- raw _meta.lua on the default branch. The default check flow reads the
+-- version from here instead of hitting api.github.com, whose anonymous
+-- rate limit (60 req/h/IP) surfaces as HTTP 403 after just a few checks.
+-- raw.githubusercontent.com is not subject to that API rate limit.
+local _RAW_META_URL = string.format(
+    "https://raw.githubusercontent.com/%s/%s/main/_meta.lua",
+    GITHUB_OWNER, GITHUB_REPO
+)
+
 -- Resolve the effective API URL: custom if set, otherwise default.
 local function _apiUrl()
     local ok_gs, gs = pcall(require, "luasettings")
@@ -266,6 +275,22 @@ end
 -- GitHub API response parsing
 -- ---------------------------------------------------------------------------
 
+-- Parse the version field out of a raw _meta.lua body.
+-- _meta.lua contains:  version = "1.0.1"
+local function _parseMetaVersion(body)
+    return tostring(body):match('version%s*=%s*"([^"]+)"')
+end
+
+-- Construct the release asset download URL for a given version.
+-- Tag scheme is v<version> (see .github/workflows/release.yml), so the
+-- asset lives at .../releases/download/v<version>/<ASSET_NAME>.
+local function _assetUrlForVersion(ver)
+    return string.format(
+        "https://github.com/%s/%s/releases/download/v%s/%s",
+        GITHUB_OWNER, GITHUB_REPO, ver, ASSET_NAME
+    )
+end
+
 local function _parseRelease(body)
     local ok_j, json = pcall(require, "json")
 
@@ -416,11 +441,33 @@ end
 -- ---------------------------------------------------------------------------
 
 local function _doFetch()
-    local body, err = _httpGet(_apiUrl())
+    local api_url = _apiUrl()
+    if api_url ~= _DEFAULT_API_URL then
+        -- A custom API URL is configured: honour it via the GitHub Releases
+        -- API flow (JSON response, includes release notes).
+        local body, err = _httpGet(api_url)
+        if not body then return { error = err } end
+        local release, parse_err = _parseRelease(body)
+        if not release then return { error = "parse error: " .. tostring(parse_err) } end
+        return release
+    end
+
+    -- Default flow: read the version from raw _meta.lua. This bypasses
+    -- api.github.com entirely, so its anonymous rate limit (60 req/h/IP,
+    -- which surfaces as HTTP 403) cannot block update checks. The asset
+    -- download URL is constructed from the tag scheme. Release notes are
+    -- not available in this flow; the update dialog omits "What's new".
+    local body, err = _httpGet(_RAW_META_URL)
     if not body then return { error = err } end
-    local release, parse_err = _parseRelease(body)
-    if not release then return { error = "parse error: " .. tostring(parse_err) } end
-    return release
+    local ver = _parseMetaVersion(body)
+    if not ver then return { error = "could not parse version from _meta.lua" } end
+    return {
+        version      = ver,
+        download_url = _assetUrlForVersion(ver),
+        notes        = nil,
+        html_url     = string.format("https://github.com/%s/%s/releases/tag/v%s",
+                                     GITHUB_OWNER, GITHUB_REPO, ver),
+    }
 end
 
 -- ---------------------------------------------------------------------------
