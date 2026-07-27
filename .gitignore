@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# Editor / dev leftovers
+*.swp
+*~
+.luarc*
+.editorconfig
+
+# Runtime artifact produced by the OTA updater when it downloads a new zip
+# into the plugin directory (see weui_updater.lua _tmpZipPath).
+weui_update.zip

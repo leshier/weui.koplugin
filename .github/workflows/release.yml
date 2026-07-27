@@ -1,0 +1,75 @@
+name: Release
+
+# Build and publish a downloadable weui.koplugin.zip release asset whenever a
+# version tag (v*) is pushed. The OTA updater (weui_updater.lua) fetches the
+# latest release from this repo and downloads the asset named exactly
+# "weui.koplugin.zip", so keep that filename stable.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Smoke syntax check (Lua 5.1)
+        continue-on-error: true
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lua5.1
+          # Syntax-only parse; never executes. Best-effort: LuaJIT-specific
+          # constructs may flag false positives, hence continue-on-error.
+          fail=0
+          while IFS= read -r f; do
+            luac5.1 -p "$f" || { echo "::warning::$f failed syntax check"; fail=1; }
+          done < <(find . -name '*.lua' -not -path './.git/*')
+          exit 0
+
+      - name: Package weui.koplugin.zip
+        run: |
+          set -e
+          # The repo root IS the plugin. Stage it under a weui.koplugin/ top
+          # folder so extracting the zip into koreader/plugins/ yields
+          # koreader/plugins/weui.koplugin/ (what KOReader expects and what
+          # weui_updater.lua assumes when it unzips into the plugin's parent).
+          mkdir -p stage/weui.koplugin
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='stage' \
+            --exclude='.gitignore' \
+            --exclude='.DS_Store' \
+            --exclude='scripts' \
+            --exclude='*.swp' \
+            --exclude='*~' \
+            --exclude='weui_update.zip' \
+            ./ stage/weui.koplugin/
+          ( cd stage && zip -rq weui.koplugin.zip weui.koplugin )
+          echo "::group::zip contents"
+          unzip -l stage/weui.koplugin.zip | head -30
+          echo "::endgroup::"
+          ls -la stage/weui.koplugin.zip
+
+      - name: Create release and upload asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "Publishing release for tag $TAG"
+          # Idempotent: create the release if missing, otherwise just (re)upload the asset.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" stage/weui.koplugin.zip --clobber
+          else
+            gh release create "$TAG" stage/weui.koplugin.zip \
+              --title "$TAG" \
+              --generate-notes \
+              --verify-tag
+          fi
