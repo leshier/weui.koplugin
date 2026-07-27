@@ -1,0 +1,23 @@
+_meta.lua
+  s_0d7d08cfcaadba::t_66402ed9ab7a8a 7
+weui_updater.lua
+  s_0d7d08cfcaadba::t_25a304df6a4b41 45-53,278-293,444-460,462-470
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "29342e3965385b771ce345a3a30bfce6bb8c1d72",
+  "prompts": {},
+  "sessions": {
+    "s_0d7d08cfcaadba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7db802dd-b6e6-4329-a9a8-aee96c5cb299",
+        "model": "unknown"
+      },
+      "human_author": "leshier <29979991+leshier@users.noreply.github.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
