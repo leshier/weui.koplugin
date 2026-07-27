@@ -1,0 +1,309 @@
+.github/workflows/release.yml
+  s_84c7612ed0ed81::t_084a6bd979b57b 1-75
+.gitignore
+  s_84c7612ed0ed81::t_e91cd70655bc4d 1-12
+LICENSE
+  s_84c7612ed0ed81::t_26a705b12aefdf 1-21
+LICENSE.weread
+  s_84c7612ed0ed81::t_09bb622a661d06 1-661
+NOTICE.weread
+  s_84c7612ed0ed81::t_28c21b9414d339 1-16
+README.md
+  s_84c7612ed0ed81::t_3791868ceebd99 1-58
+_meta.lua
+  s_84c7612ed0ed81::t_bb7aa69a8513e7 1-9
+desktop_modules/module_action_list.lua
+  s_84c7612ed0ed81::t_d0bf2648b3ca7f 1-616
+desktop_modules/module_book_rows.lua
+  s_84c7612ed0ed81::t_6d9bf044169431 1-222
+desktop_modules/module_books_shared.lua
+  s_84c7612ed0ed81::t_ac09c469c7e54b 1-902
+desktop_modules/module_clock.lua
+  s_84c7612ed0ed81::t_1c1e44873a5a49 1-933
+desktop_modules/module_coll_row.lua
+  s_84c7612ed0ed81::t_ace2bb0806a0b9 1-383
+desktop_modules/module_collections.lua
+  s_84c7612ed0ed81::t_44268988244563 1-1110
+desktop_modules/module_coverdeck.lua
+  s_84c7612ed0ed81::t_9b833ed55f08a5 1-1485
+desktop_modules/module_currently.lua
+  s_84c7612ed0ed81::t_a18a6e1bfbf1d3 1-1679
+desktop_modules/module_quick_actions.lua
+  s_84c7612ed0ed81::t_c48c929b20fa7b 1-670
+desktop_modules/module_quote.lua
+  s_84c7612ed0ed81::t_db098141ae7b62 1-1546
+desktop_modules/module_reading_goals.lua
+  s_84c7612ed0ed81::t_dc043a43672cc3 1-1119
+desktop_modules/module_reading_stats.lua
+  s_84c7612ed0ed81::t_a352fcc30f75bb 1-899
+desktop_modules/module_spacer.lua
+  s_84c7612ed0ed81::t_3802b7a8d1cb9f 1-114
+desktop_modules/module_stats_provider.lua
+  s_84c7612ed0ed81::t_c6fc80b141d19e 1-891
+desktop_modules/module_tbr.lua
+  s_84c7612ed0ed81::t_4dee1ede417953 1-469
+desktop_modules/module_weread_stats.lua
+  s_84c7612ed0ed81::t_3c0467d03fbd34 1-428
+desktop_modules/moduleregistry.lua
+  s_84c7612ed0ed81::t_2fd8646cf29d0b 1-491
+desktop_modules/quotes.lua
+  s_84c7612ed0ed81::t_a0d5626ee0070a 1-117
+desktop_modules/user_script_loader.lua
+  s_84c7612ed0ed81::t_084890ea51f221 1-338
+desktop_modules/weui_book_row.lua
+  s_84c7612ed0ed81::t_5d56f3f21a2b07 1-930
+fonts/LICENSE
+  s_84c7612ed0ed81::t_39fc833adae102 1-93
+icons/author.svg
+  s_84c7612ed0ed81::t_cb4c3240c08407 1-9
+icons/collections.svg
+  s_84c7612ed0ed81::t_a652325a2a68b0 1-12
+icons/continue.svg
+  s_84c7612ed0ed81::t_2a6a99ebae26c6 1-18
+icons/custom.svg
+  s_84c7612ed0ed81::t_bc39787fadcbdd 1-6
+icons/default.svg
+  s_84c7612ed0ed81::t_e4900e382d9b41 1-6
+icons/frontlight.svg
+  s_84c7612ed0ed81::t_e5ab56d4b2c519 1-18
+icons/group.svg
+  s_84c7612ed0ed81::t_7c563f8e9e42ff 1-9
+icons/history.svg
+  s_84c7612ed0ed81::t_764cb5dca3c9ff 1-12
+icons/library.svg
+  s_84c7612ed0ed81::t_51a9b0c8b6ca3c 1-9
+icons/night.svg
+  s_84c7612ed0ed81::t_6bce4477304058 1-4
+icons/plugin.svg
+  s_84c7612ed0ed81::t_06308329ccfb60 1-45
+icons/power.svg
+  s_84c7612ed0ed81::t_ea3c332f39cf3d 1-4
+icons/random.svg
+  s_84c7612ed0ed81::t_ce489e06f5a1e5 1-9
+icons/recent.svg
+  s_84c7612ed0ed81::t_edcf8d35a90eda 1-9
+icons/series.svg
+  s_84c7612ed0ed81::t_49faaaa6f57ad4 1-8
+icons/settings.svg
+  s_84c7612ed0ed81::t_a8866955c7adf7 1-33
+icons/stats.svg
+  s_84c7612ed0ed81::t_f089f6a28a0158 1-15
+icons/tags.svg
+  s_84c7612ed0ed81::t_2862d9caa90867 1-4
+icons/weread.svg
+  s_84c7612ed0ed81::t_3a6ae1fbece198 1-8
+icons/weread_account.svg
+  s_84c7612ed0ed81::t_51044a0388c37a 1-5
+icons/weread_back.svg
+  s_84c7612ed0ed81::t_f2b7548f82b079 1-7
+icons/weread_book.svg
+  s_84c7612ed0ed81::t_20a6de8993a598 1-16
+icons/weread_book_cached.svg
+  s_84c7612ed0ed81::t_c737349d37357e 1-14
+icons/weread_category.svg
+  s_84c7612ed0ed81::t_b3a4bb35a9e605 1-9
+icons/weread_chapters.svg
+  s_84c7612ed0ed81::t_d3db2548844f8e 1-14
+icons/weread_check.svg
+  s_84c7612ed0ed81::t_b1b40a8c174fd9 1-5
+icons/weread_circle.svg
+  s_84c7612ed0ed81::t_d12d7dc1c976c5 1-4
+icons/weread_download.svg
+  s_84c7612ed0ed81::t_6908ba0a5936e7 1-5
+icons/weread_filter.svg
+  s_84c7612ed0ed81::t_3f3c5d13752a28 1-8
+icons/weread_folder.svg
+  s_84c7612ed0ed81::t_59823c997a9fac 1-5
+icons/weread_highlights.svg
+  s_84c7612ed0ed81::t_04b6fb22ccb69b 1-12
+icons/weread_isbn.svg
+  s_84c7612ed0ed81::t_2843adb8e4deea 1-13
+icons/weread_key.svg
+  s_84c7612ed0ed81::t_05099fdf63b53b 1-5
+icons/weread_notes.svg
+  s_84c7612ed0ed81::t_dcf866fd535d75 1-16
+icons/weread_publisher.svg
+  s_84c7612ed0ed81::t_2bd38d4def606b 1-15
+icons/weread_qr.svg
+  s_84c7612ed0ed81::t_923c6dc6643c78 1-5
+icons/weread_rating.svg
+  s_84c7612ed0ed81::t_7d5e70e7400b1c 1-7
+icons/weread_reviews.svg
+  s_84c7612ed0ed81::t_64b3e560bdcbaf 1-11
+icons/weread_shelf.svg
+  s_84c7612ed0ed81::t_14c0b1828eaa58 1-7
+icons/weread_sort.svg
+  s_84c7612ed0ed81::t_7a279b28c4ba52 1-12
+icons/weread_translator.svg
+  s_84c7612ed0ed81::t_75744f15f20634 1-12
+icons/weread_trash.svg
+  s_84c7612ed0ed81::t_55fea9b122ff0f 1-15
+icons/weread_wordcount.svg
+  s_84c7612ed0ed81::t_1ef33a88f96adb 1-13
+icons/weui_logo.svg
+  s_84c7612ed0ed81::t_3d2f1c204f1536 1-7
+icons/weui_menu.svg
+  s_84c7612ed0ed81::t_b7fa765aae7810 1-12
+lib/annotations.lua
+  s_84c7612ed0ed81::t_90afed88fed296 1-512
+lib/book_store.lua
+  s_84c7612ed0ed81::t_1579a02fa9c971 1-168
+lib/client.lua
+  s_84c7612ed0ed81::t_8a69f87640e14c 1-660
+lib/content.lua
+  s_84c7612ed0ed81::t_f55ce9eebccf15 1-1576
+lib/cookie.lua
+  s_84c7612ed0ed81::t_1be600644f4ee5 1-59
+lib/crypto.lua
+  s_84c7612ed0ed81::t_cf3b69ce44fe87 1-202
+lib/downloader.lua
+  s_84c7612ed0ed81::t_b124475ef8ef8f 1-1000
+lib/i18n.lua
+  s_84c7612ed0ed81::t_eed2b3c4b55970 1-454
+lib/qr_login.lua
+  s_84c7612ed0ed81::t_9246d3696da6ec 1-556
+lib/read_report.lua
+  s_84c7612ed0ed81::t_b034a8e9f5084b 1-575
+lib/read_stats.lua
+  s_84c7612ed0ed81::t_71b3a743976b1a 1-267
+lib/read_stats_export.lua
+  s_84c7612ed0ed81::t_fd02c2d6aadee7 1-176
+lib/read_stats_heatmap.lua
+  s_84c7612ed0ed81::t_6042caedb0d327 1-152
+lib/reader_state.lua
+  s_84c7612ed0ed81::t_cb97d8cc8a3434 1-50
+lib/sandbox.lua
+  s_84c7612ed0ed81::t_2f6ce221802c2d 1-198
+lib/scan.lua
+  s_84c7612ed0ed81::t_000726378a55fb 1-154
+lib/settings.lua
+  s_84c7612ed0ed81::t_a33f8ad5193ddf 1-274
+lib/thoughts.lua
+  s_84c7612ed0ed81::t_29b1e88238785f 1-182
+lib/weread.lua
+  s_84c7612ed0ed81::t_3418711c14f78f 1-288
+locale/bg.po
+  s_84c7612ed0ed81::t_641921fbc9f471 1-4023
+locale/cs.po
+  s_84c7612ed0ed81::t_240cf3a0316085 1-4904
+locale/de.po
+  s_84c7612ed0ed81::t_c99c42b89768b7 1-2492
+locale/es.po
+  s_84c7612ed0ed81::t_a73884d0a1c683 1-2695
+locale/fr.po
+  s_84c7612ed0ed81::t_bc3b874ff4042b 1-2138
+locale/hu.po
+  s_84c7612ed0ed81::t_92c2e645d4362e 1-4804
+locale/it_IT.po
+  s_84c7612ed0ed81::t_42e8b09843c04e 1-1824
+locale/ja.po
+  s_84c7612ed0ed81::t_0c9b2e2fe97e46 1-4131
+locale/lt_LT.po
+  s_84c7612ed0ed81::t_5c7ef70f5d688f 1-4375
+locale/pl.po
+  s_84c7612ed0ed81::t_522fc746fa3631 1-4695
+locale/pt_BR.po
+  s_84c7612ed0ed81::t_386728271d8c4f 1-4712
+locale/pt_PT.po
+  s_84c7612ed0ed81::t_54486d3ec1082e 1-4717
+locale/ro.po
+  s_84c7612ed0ed81::t_6b60e051e3de95 1-2220
+locale/ro_MD.po
+  s_84c7612ed0ed81::t_1ae2aa46b7e61b 1-2220
+locale/ru.po
+  s_84c7612ed0ed81::t_d666f59a19eb09 1-4084
+locale/sv.po
+  s_84c7612ed0ed81::t_5d630325b5b449 1-1281
+locale/tr.po
+  s_84c7612ed0ed81::t_5807a99d1f8461 1-1994
+locale/uk.po
+  s_84c7612ed0ed81::t_4741a777da9f03 1-4333
+locale/vi.po
+  s_84c7612ed0ed81::t_ebfa4c556f23d8 1-4131
+locale/weui.pot
+  s_84c7612ed0ed81::t_1cbbc7759785a8 1-4616
+locale/zh_CN.po
+  s_84c7612ed0ed81::t_37f2f8afcc5ea7 1-4990
+locale/zh_TW.po
+  s_84c7612ed0ed81::t_819e5c61540049 1-1946
+main.lua
+  s_84c7612ed0ed81::t_788ce6ace87070 1-2585
+scripts/verify_progress_sync.py
+  s_84c7612ed0ed81::t_ca53bb7f73a395 1-150
+ui/download_dialog.lua
+  s_84c7612ed0ed81::t_fc2d91eeda748e 1-162
+ui/end_of_book_dialog.lua
+  s_84c7612ed0ed81::t_c182032252cfc6 1-109
+ui/offline_manager.lua
+  s_84c7612ed0ed81::t_4ffb6414e29fe5 1-551
+ui/read_stats_view.lua
+  s_84c7612ed0ed81::t_ab12876ddc98f1 1-743
+ui/thought_popup.lua
+  s_84c7612ed0ed81::t_cbcaffc5417c4f 1-695
+weui_bottombar.lua
+  s_84c7612ed0ed81::t_f0bea834359b97 1-1741
+weui_browsemeta.lua
+  s_84c7612ed0ed81::t_75f4846bf9c75f 1-1584
+weui_config.lua
+  s_84c7612ed0ed81::t_c94a14f634e6d1 1-1486
+weui_core.lua
+  s_84c7612ed0ed81::t_993b648b197a85 1-834
+weui_foldercovers.lua
+  s_84c7612ed0ed81::t_5e16b0dbb16b1b 1-3527
+weui_homescreen.lua
+  s_84c7612ed0ed81::t_9c912f96e2cf9d 1-3789
+weui_i18n.lua
+  s_84c7612ed0ed81::t_ea1c5969426295 1-298
+weui_menu.lua
+  s_84c7612ed0ed81::t_125fe0816b063d 1-4900
+weui_onboarding.lua
+  s_84c7612ed0ed81::t_a7586c5f3a7a4d 1-285
+weui_patches.lua
+  s_84c7612ed0ed81::t_1ed6743a52dee7 1-5106
+weui_presets.lua
+  s_84c7612ed0ed81::t_2a4ef1602e0f2d 1-1154
+weui_privacy.lua
+  s_84c7612ed0ed81::t_79c57c7cc7248b 1-1159
+weui_quickactions.lua
+  s_84c7612ed0ed81::t_f312e7ac325694 1-3280
+weui_quicksettings_bar.lua
+  s_84c7612ed0ed81::t_9b01f40642f6c5 1-1404
+weui_settings_window.lua
+  s_84c7612ed0ed81::t_ccb88efda8e745 1-983
+weui_stats_windows.lua
+  s_84c7612ed0ed81::t_e64e5fb3ffa283 1-3976
+weui_store.lua
+  s_84c7612ed0ed81::t_c9657d8df7f471 1-274
+weui_streak.lua
+  s_84c7612ed0ed81::t_148fec084af7ba 1-384
+weui_style.lua
+  s_84c7612ed0ed81::t_006ef21b9eb7a6 1-2404
+weui_titlebar.lua
+  s_84c7612ed0ed81::t_799da05101ba76 1-1530
+weui_topbar.lua
+  s_84c7612ed0ed81::t_af20d9f6236cb9 1-660
+weui_updater.lua
+  s_84c7612ed0ed81::t_1255e800099f8a 1-735
+weui_weread.lua
+  s_84c7612ed0ed81::t_537d4a2274af80 1-4538
+weui_window.lua
+  s_84c7612ed0ed81::t_b1b24301498a6a 1-3203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cb0b15c5ae5f895f8f58cdefab0be9fb2d6a3288",
+  "prompts": {},
+  "sessions": {
+    "s_84c7612ed0ed81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d1757771-d518-4bfd-87c2-7a471e2fd65b",
+        "model": "unknown"
+      },
+      "human_author": "leshier <29979991+leshier@users.noreply.github.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
