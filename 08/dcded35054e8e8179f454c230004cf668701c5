@@ -1,0 +1,41 @@
+_meta.lua
+  s_825df1cd8199ca::t_91036598c1b81c 7
+desktop_modules/module_books_shared.lua
+  s_825df1cd8199ca::t_7553a035f85e71 359-396,630
+desktop_modules/module_currently.lua
+  s_825df1cd8199ca::t_f3fff458042982 478
+desktop_modules/module_quote.lua
+  s_825df1cd8199ca::t_6a0937f1a3cee5 318-321,363,365,367,723,725,727
+desktop_modules/weui_book_row.lua
+  s_825df1cd8199ca::t_bae56a35be7e33 256
+main.lua
+  s_825df1cd8199ca::t_655f690c424629 1050-1059,2533-2535,2542-2544
+weui_config.lua
+  s_825df1cd8199ca::t_11321d05b2b48c 1215-1218
+weui_core.lua
+  s_825df1cd8199ca::t_957a0dcb1b4581 74-77
+weui_privacy.lua
+  s_825df1cd8199ca::t_c1929eecd35db5 35-44,182-186,269-273,275-300,451,518-521,795-801,899,919-922,932,952,962-980,982,985-995,1018-1134,1165-1184,1290-1294,1296-1299,1319-1323,1346-1357
+weui_quickactions.lua
+  s_825df1cd8199ca::t_2311796be2d3e4 3143
+weui_style.lua
+  s_825df1cd8199ca::t_c705c9476517c3 1459-1469,1908-1919,1991-1997
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "08dcded35054e8e8179f454c230004cf668701c5",
+  "prompts": {},
+  "sessions": {
+    "s_825df1cd8199ca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87afdb06-c631-4ff0-8270-b9918a183aa3",
+        "model": "unknown"
+      },
+      "human_author": "leshier <29979991+leshier@users.noreply.github.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
