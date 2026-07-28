@@ -26,7 +26,6 @@ local SUIStyle        = require("weui_style")
 
 local math_floor = math.floor
 local math_max   = math.max
-local math_min   = math.min
 
 -- Returns the KOBO_VIRTUAL:// path for a real kepub filepath when the
 -- kobo.koplugin is active, or the original filepath otherwise.
@@ -169,8 +168,9 @@ function SH.getDims(scale, thumb_scale)
     }
 end
 
-local _CLR_COVER_BORDER = Blitbuffer.COLOR_BLACK
-local _CLR_COVER_BG     = Blitbuffer.gray(0.88)
+-- Cover border: a soft hairline (GRAY.line) rather than hard black, so covers
+-- sit on the page with the same calm separator weight as the rest of the UI.
+local _CLR_COVER_BORDER = SUIStyle.GRAY.line
 
 -- ---------------------------------------------------------------------------
 -- vspan pool helper

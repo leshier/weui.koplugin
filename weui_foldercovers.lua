@@ -326,8 +326,6 @@ end
 
 -- Base sizes computed once from device DPI at startup.
 local _BASE_COVER_H = math.floor(Screen:scaleBySize(96))
-local _BASE_NB_SIZE = Screen:scaleBySize(10)
-local _BASE_NB_FS   = SUIStyle.FS_DETAIL  -- 15: folder-count number badge overlay
 local _BASE_DIR_FS  = SUIStyle.FS_SUBTITLE -- 20: directory name label ceiling for binary-search
 
 local _EDGE_THICK  = math.max(1, Screen:scaleBySize(3))
@@ -362,7 +360,6 @@ local _module_strip_h = 0
 -- Badge geometry. _BADGE_FONT_SZ drives the folder-count circle badge.
 -- Text badges (pages, series, "New") derive geometry from eff_size instead.
 local _BADGE_FONT_SZ     = Screen:scaleBySize(5)
-local _BADGE_TOP_INSET   = Screen:scaleBySize(0)
 local _BADGE_RIGHT_INSET = Screen:scaleBySize(8)
 local _BADGE_BAR_H       = Screen:scaleBySize(8)
 local _BADGE_BAR_GAP     = Screen:scaleBySize(4)
@@ -370,7 +367,6 @@ local _BADGE_BAR_GAP     = Screen:scaleBySize(4)
 -- Plugin directory and optional custom icon path.
 local _PLUGIN_DIR  = debug.getinfo(1, "S").source:match("^@(.+/)[^/]+$") or "./"
 local _ICON_PATH   = _PLUGIN_DIR .. "icons/custom.svg"
-local _ICON_EXISTS = lfs.attributes(_ICON_PATH, "mode") == "file"
 
 -- ---------------------------------------------------------------------------
 -- 5. Caches

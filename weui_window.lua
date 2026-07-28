@@ -91,7 +91,6 @@
 -- Icon reference: SUIStyle.icon("name") — never raw codepoints.
 
 local Blitbuffer      = require("ffi/blitbuffer")
-local BottomContainer = require("ui/widget/container/bottomcontainer")
 local ButtonDialog    = require("ui/widget/buttondialog")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local Device          = require("device")

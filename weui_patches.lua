@@ -149,15 +149,6 @@ local function isStartWithHS()
     return _start_with_hs
 end
 
--- Linear search used in low-frequency paths (boot, resume).
--- Hot paths build a set with tabsToSet() instead.
-local function tabInTabs(id, tabs)
-    for _, v in ipairs(tabs) do
-        if v == id then return true end
-    end
-    return false
-end
-
 -- Converts a tab list to a hash-set for O(1) membership tests.
 local function tabsToSet(tabs)
     local s = {}

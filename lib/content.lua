@@ -1203,18 +1203,6 @@ function Content.extract_mp_body(html)
     return body
 end
 
-local function normalize_void_elements(html)
-    html = html:gsub("<(br)%s*>", "<%1/>")
-    html = html:gsub("<(hr)%s*>", "<%1/>")
-    html = html:gsub("<(img)(%s[^>]-)>", function(tag, attrs)
-        if not attrs:match("/$") then
-            return "<" .. tag .. attrs .. "/>"
-        end
-        return "<" .. tag .. attrs .. ">"
-    end)
-    return html
-end
-
 local function strip_mp_reader_font_styles(html)
     local blocked = {
         ["font"] = true,

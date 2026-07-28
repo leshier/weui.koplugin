@@ -35,13 +35,11 @@ local Privacy      = require("weui_privacy")
 local CLR_TEXT_SUB = UI.CLR_TEXT_SUB
 local PAD     = UI.PAD
 local PAD2    = UI.PAD2
-local MOD_GAP = UI.MOD_GAP
 
 -- Base dimensions at 100% scale — never modified at runtime.
 local _BASE_COLL_W       = Screen:scaleBySize(75)
 local _BASE_COLL_H       = Screen:scaleBySize(112)
 local _BASE_ACCENT_H     = Screen:scaleBySize(4)
-local _BASE_LABEL_LINE_H = Screen:scaleBySize(14)
 local _BASE_LABEL_GAP    = Screen:scaleBySize(4)   -- gap between cover and label
 local _BASE_BADGE_SZ       = Screen:scaleBySize(16)
 local _BASE_BADGE_MARGIN   = Screen:scaleBySize(4)  -- right margin
@@ -61,7 +59,6 @@ local EDGE_H2    = 0.94   -- outer line height fraction
 local _CLR_COVER_BORDER = Blitbuffer.COLOR_BLACK
 local _CLR_COVER_BG     = Blitbuffer.gray(0.88)
 
-local LABEL_H = UI.LABEL_H  -- kept for any external callers; getHeight() uses getScaledLabelH()
 
 -- Aspect ratio of the collection cover, from the 100%-scale base dims —
 -- used to derive coll_h from an auto-fit coll_w while keeping proportions.

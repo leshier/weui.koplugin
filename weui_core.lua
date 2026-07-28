@@ -722,7 +722,7 @@ function M.progressBar(w, pct, bar_h, fg_color, bg_color)
     
     if style == "framed" then
         local border = ok and SUIStyle.BADGE_BORDER_SZ or 1
-        local border_color = Blitbuffer.COLOR_BLACK
+        local border_color = (ok and SUIStyle.GRAY.line) or Blitbuffer.COLOR_GRAY
         local inner_w = math.max(0, w - 2 * border)
         local inner_h = math.max(0, bar_h - 2 * border)
         local fw = math.max(0, math.floor(inner_w * math.min(pct or 0, 1.0)))

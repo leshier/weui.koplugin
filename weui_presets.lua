@@ -451,12 +451,6 @@ local function _isScalarIconKey(key)
     return false
 end
 
-local function _isCQAKey(key)
-    return key ~= ICON_PRESET_KEY
-        and key ~= CQA_LIST_KEY
-        and key:sub(1, #CQA_PREFIX) == CQA_PREFIX
-end
-
 local SUIIconPresets = {}
 
 function SUIIconPresets.getAll()

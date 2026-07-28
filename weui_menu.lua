@@ -19,8 +19,6 @@ local T = require("ffi/util").template
 local function InfoMessage()      return require("ui/widget/infomessage")      end
 local function ConfirmBox()       return require("ui/widget/confirmbox")        end
 local function InputDialog()      return require("ui/widget/inputdialog")       end
-local function MultiInputDialog() return require("ui/widget/multiinputdialog") end
-local function PathChooser()      return require("ui/widget/pathchooser")       end
 local function SortWidget()       return require("ui/widget/sortwidget")        end
 
 local Config    = require("weui_config")
@@ -207,77 +205,6 @@ WeUIPlugin.addToMainMenu = function(self, menu_items)
     -- -----------------------------------------------------------------------
     -- Tab and position menu builders
     -- -----------------------------------------------------------------------
-
-    local function makePositionMenu(pos)
-        local items        = {}
-        local cached_tabs
-        local cached_labels = {}
-
-        local function getTabs()
-            if not cached_tabs then cached_tabs = loadTabConfig() end
-            return cached_tabs
-        end
-
-        local function getResolvedLabel(id)
-            if not cached_labels[id] then
-                if id:match("^custom_qa_%d+$") then
-                    cached_labels[id] = getCustomQAConfig(id).label
-                elseif id == "home" then
-                    cached_labels[id] = _homeLabel()
-                else
-                    cached_labels[id] = (ACTION_BY_ID[id] and ACTION_BY_ID[id].label) or id
-                end
-            end
-            return cached_labels[id]
-        end
-
-        local pool = {}
-        for _i, action in ipairs(ALL_ACTIONS) do
-            if actionAvailable(action.id) then pool[#pool + 1] = action.id end
-        end
-        for _i, qa_id in ipairs(getCustomQAList()) do pool[#pool + 1] = qa_id end
-
-        for _i, id in ipairs(pool) do
-            local _id = id
-            items[#items + 1] = {
-                text_func    = function()
-                    local lbl  = getResolvedLabel(_id)
-                    local tabs = getTabs()
-                    for i, tid in ipairs(tabs) do
-                        if tid == _id and i ~= pos then
-                            return lbl .. "  (#" .. i .. ")"
-                        end
-                    end
-                    return lbl
-                end,
-                checked_func = function() return getTabs()[pos] == _id end,
-                keep_menu_open = true,
-                callback     = function()
-                    local tabs    = loadTabConfig()
-                    cached_tabs   = nil
-                    cached_labels = {}
-                    local old_id  = tabs[pos]
-                    if old_id == _id then return end
-                    tabs[pos] = _id
-                    for i, tid in ipairs(tabs) do
-                        if i ~= pos and tid == _id then tabs[i] = old_id; break end
-                    end
-                    _ensureHomePresent(tabs)
-                    saveTabConfig(tabs)
-                    plugin:_scheduleRebuild()
-                end,
-            }
-        end
-        -- Pre-compute sort keys once so text_func is not called O(N log N) times
-        -- during the sort comparison (#13).
-        for _i, item in ipairs(items) do
-            local t = item.text_func()
-            item._sort_key = (t:match("^(.-)%s+%(#") or t):lower()
-        end
-        table.sort(items, function(a, b) return a._sort_key < b._sort_key end)
-        for _i, item in ipairs(items) do item._sort_key = nil end
-        return items
-    end
 
     local function getActionLabel(id)
         if not id then return "?" end
@@ -2064,38 +1991,6 @@ WeUIPlugin.addToMainMenu = function(self, menu_items)
                 end
             end,
         })
-
-        local function loadOrder()
-            local saved   = SUISettings:readSetting(ctx.pfx .. "module_order")
-            local default = Registry.defaultOrder()
-            if type(saved) ~= "table" or #saved == 0 then return default end
-            local seen = {}; local result = {}
-            for _loop_, v in ipairs(saved) do seen[v] = true; result[#result+1] = v end
-            for _loop_, v in ipairs(default) do if not seen[v] then result[#result+1] = v end end
-            return result
-        end
-
-        -- Toggle item for one module descriptor.
-        -- Persistence is fully delegated to mod.setEnabled(pfx, on).
-        local function makeToggleItem(mod)
-            local _mod = mod
-            return {
-                text_func = function()
-                    return _(_mod.name) -- FIX: Force translation evaluation at display time
-                end,
-                checked_func   = function() return Registry.isEnabled(_mod, ctx.pfx) end,
-                keep_menu_open = true,
-                callback = function()
-                    local on = Registry.isEnabled(_mod, ctx.pfx)
-                    if type(_mod.setEnabled) == "function" then
-                        _mod.setEnabled(ctx.pfx, not on)
-                    elseif _mod.enabled_key then
-                        SUISettings:saveSetting(ctx.pfx .. _mod.enabled_key, not on)
-                    end
-                    ctx.refresh()
-                end,
-            }
-        end
 
         -- Module Settings sub-menu: one entry per module that has getMenuItems.
         -- Count labels are provided by mod.getCountLabel(pfx) — no per-id special cases.

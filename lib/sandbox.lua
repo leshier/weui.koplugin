@@ -15,36 +15,11 @@ local M = {}
 -- Whitelisted global identifiers.
 -- Everything NOT on this list is absent from the sandbox environment.
 -- ---------------------------------------------------------------------------
-local SAFE_STDLIB = {
-    -- basic library
-    "assert", "error", "ipairs", "pairs", "pcall", "xpcall",
-    "select", "tonumber", "tostring", "type", "unpack",
-    "next", "rawequal", "rawget", "rawset", "setmetatable", "getmetatable",
-    "print", "require",   -- 'require' is intercepted; see below
-    -- string
-    "string",
-    -- table
-    "table",
-    -- math
-    "math",
-    -- utf8 (Lua 5.3 / LuaJIT 2.1 with bit has it; harmless if absent)
-    "utf8",
-    -- bit / bit32 (LuaJIT / Lua 5.2)
-    "bit", "bit32",
-    -- os — only safe, read-only subroutines; no execute/remove/rename etc.
-    -- (We rebuild os ourselves with only the safe entries.)
-}
-
 -- Safe entries from the `os` table.
 local SAFE_OS_KEYS = {
     "date", "time", "difftime", "clock", "setlocale",
     "getenv",   -- read-only env access; low risk
 }
-
--- Safe entries from the `string` table (everything except dump / gmatch
--- with load-style abuse is fine; we keep the whole table but guard against
--- metatable escapes in the env builder).
-local SAFE_STRING = true  -- keep whole string lib
 
 -- ---------------------------------------------------------------------------
 -- M.load_safe(code, [env_overrides]) → ok, result_or_err

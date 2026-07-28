@@ -76,7 +76,6 @@ M.ICON = {
     weread_shelf   = _P .. "weread_shelf.svg",
     weread_qr      = _P .. "weread_qr.svg",
     weread_check   = _P .. "weread_check.svg",
-    weread_circle  = _P .. "weread_circle.svg",
     weread_book    = _P .. "weread_book.svg",
     weread_book_cached = _P .. "weread_book_cached.svg",
     weread_chapters  = _P .. "weread_chapters.svg",
@@ -93,9 +92,7 @@ M.ICON = {
     weread_wordcount = _P .. "weread_wordcount.svg",
     weread_rating    = _P .. "weread_rating.svg",
     weread_isbn      = _P .. "weread_isbn.svg",
-    plus_alt       = _P .. "plus_alt.svg",
     custom         = _P .. "custom.svg",
-    custom_dir     = _P .. "custom",
     group          = _P .. "group.svg",
     plugin         = _P .. "plugin.svg",
     author         = _P .. "author.svg",
@@ -107,9 +104,7 @@ M.ICON = {
     ko_star        = _KO .. "star.empty.svg",
     ko_wifi_on     = _KO .. "wifi.open.100.svg",
     ko_wifi_off    = _KO .. "wifi.open.0.svg",
-    ko_menu        = _KO .. "appbar.menu.svg",
     weui_menu      = _P .. "weui_menu.svg",
-    weui_logo      = _P .. "weui_logo.svg",
     ko_settings    = _KO .. "appbar.settings.svg",
     ko_search      = _KO .. "appbar.search.svg",
     ko_bookmark    = _KO .. "bookmark.svg",
@@ -440,7 +435,6 @@ function M.wifiIcon()
     return icon_off
 end
 
-local _wifi_action_live = { id = "wifi_toggle", label = "", icon = "" }
 
 function M.getActionById(id)
     local QA = package.loaded["weui_quickactions"]
@@ -1040,47 +1034,60 @@ local function _evictOldestCover()
         end
     end
     if oldest_key then
+        local entry = _bim_cover_cache[oldest_key]
+        -- Free the scaled BlitBuffer we own. Entries flagged not-owned hold a
+        -- BookInfoManager original (CoverBrowser may free it too), so we must
+        -- not free those here. LRU evicts the oldest access; on-screen covers
+        -- were just touched and stay resident, so a freed owned BB is no
+        -- longer referenced by any live ImageWidget (image_disposable=false).
+        if entry and entry.owned and entry.bb then
+            pcall(function() entry.bb:free() end)
+        end
         _bim_cover_cache[oldest_key] = nil
         _bim_cover_count = _bim_cover_count - 1
     end
 end
 
+-- Scale a source BlitBuffer into the target slot. Returns (bb, owned): owned is
+-- true when the returned BB was freshly allocated by us (safe to free on
+-- eviction), false when we fell back to returning the caller's original BB
+-- (BookInfoManager-owned; never free it).
 local function _scaleBBToSlot(bb, target_w, target_h, align, stretch_limit)
     if not _RenderImage then
         local ok, ri = pcall(require, "ui/renderimage")
-        if not (ok and ri) then return bb end
+        if not (ok and ri) then return bb, false end
         _RenderImage = ri
     end
     local src_w, src_h = bb:getWidth(), bb:getHeight()
-    if src_w <= 0 or src_h <= 0 then return bb end
+    if src_w <= 0 or src_h <= 0 then return bb, false end
     if src_w == target_w and src_h == target_h then
         local ok_copy, copy_bb = pcall(Blitbuffer.new, target_w, target_h, bb:getType())
         if ok_copy and copy_bb then
             pcall(copy_bb.blitFrom, copy_bb, bb, 0, 0, 0, 0, target_w, target_h)
-            return copy_bb
+            return copy_bb, true
         end
-        return bb
+        return bb, false
     end
     if stretch_limit then
         local scale_w, scale_h = target_w / src_w, target_h / src_h
         local distort = math.abs(scale_w / scale_h - 1)
         if distort <= stretch_limit then
             local ok_sc, stretched_bb = pcall(function() return _RenderImage:scaleBlitBuffer(bb, target_w, target_h) end)
-            if ok_sc and stretched_bb then return stretched_bb end
+            if ok_sc and stretched_bb then return stretched_bb, true end
         end
     end
     local scale_factor = math_max(target_w / src_w, target_h / src_h)
     local scaled_w, scaled_h = math_floor(src_w * scale_factor + 0.5), math_floor(src_h * scale_factor + 0.5)
     local ok_sc, scaled_bb = pcall(_RenderImage.scaleBlitBuffer, _RenderImage, bb, scaled_w, scaled_h)
-    if not (ok_sc and scaled_bb) then return bb end
-    if scaled_w == target_w and scaled_h == target_h then return scaled_bb end
+    if not (ok_sc and scaled_bb) then return bb, false end
+    if scaled_w == target_w and scaled_h == target_h then return scaled_bb, true end
     local ok_slot, slot_bb = pcall(Blitbuffer.new, target_w, target_h, scaled_bb:getType())
-    if not (ok_slot and slot_bb) then return scaled_bb end
+    if not (ok_slot and slot_bb) then return scaled_bb, true end
     local src_x = align == "left" and 0 or (align == "right" and scaled_w - target_w or math_floor((scaled_w - target_w) / 2))
     local src_y = math_floor((scaled_h - target_h) / 2)
     pcall(slot_bb.blitFrom, slot_bb, scaled_bb, 0, 0, src_x, src_y, target_w, target_h)
     pcall(scaled_bb.free, scaled_bb)
-    return slot_bb
+    return slot_bb, true
 end
 
 local _NO_COVER = {}
@@ -1127,9 +1134,9 @@ function M.getCoverBB(filepath, w, h, align, stretch_limit)
     if bookinfo and bookinfo.cover_fetched then
         if bookinfo.has_cover and bookinfo.cover_bb then
             M._cover_extract_pending[filepath] = nil
-            local bb = _scaleBBToSlot(bookinfo.cover_bb, w, h, align, stretch_limit)
+            local bb, owned = _scaleBBToSlot(bookinfo.cover_bb, w, h, align, stretch_limit)
             if _bim_cover_count >= BIM_MAX_COVERS then _evictOldestCover() end
-            _bim_cover_cache[key] = { bb = bb, t = os.time() }
+            _bim_cover_cache[key] = { bb = bb, t = os.time(), owned = owned }
             _bim_cover_count = _bim_cover_count + 1
             return bb
         else
@@ -1149,7 +1156,10 @@ function M.clearCoverCache()
     local function freeNext()
         local k, entry = next(to_free)
         if not k then return end
-        pcall(function() entry.bb:free() end); to_free[k] = nil
+        -- Only free BBs we allocated; non-owned entries alias a BookInfoManager
+        -- original that CoverBrowser may also free (avoid double-free).
+        if entry.owned and entry.bb then pcall(function() entry.bb:free() end) end
+        to_free[k] = nil
         if next(to_free) then UIManager:scheduleIn(0.1, freeNext) end
     end
     UIManager:scheduleIn(0.1, freeNext)

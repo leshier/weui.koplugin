@@ -27,13 +27,10 @@ local UI           = require("weui_core")
 local SUISettings  = require("weui_store")
 local SUIStyle     = require("weui_style")
 local PAD          = UI.PAD
-local PAD2         = UI.PAD2
-local LABEL_H      = UI.LABEL_H
 local CLR_TEXT_SUB = UI.CLR_TEXT_SUB
 
 -- Colours
 local _CLR_TEXT_LBL = Blitbuffer.COLOR_BLACK
-local _CLR_TEXT_PCT = Blitbuffer.COLOR_BLACK
 
 -- Default layout base dimensions (scaled at render time via _scaledDims)
 local _BASE_ROW_FS  = SUIStyle.FS_BODY     -- 18: row text

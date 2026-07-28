@@ -363,6 +363,37 @@ function M.safeIconPath(path, fallback, slot_id)
     return path
 end
 
+--- Build a sized, pre-rendered ImageWidget for an icon file (SVG/PNG/JPG).
+--- Centralizes the boilerplate every call site used to duplicate
+--- (is_icon/alpha + pcall(_render) + free-on-failure) and - crucially - sets
+--- `original_in_nightmode = true` so icons do NOT invert in night mode, which
+--- the raw call sites forgot inconsistently. `path` should already be validated
+--- (e.g. via M.safeIconPath); nerd-string icons are not handled here (render
+--- those as TextWidget with FACE_ICONS, as the call sites do).
+---
+--- @param path string  validated icon file path
+--- @param size number  icon width == height (square)
+--- @return ImageWidget|nil  the rendered widget, or nil on failure (already freed)
+function M.iconImage(path, size)
+    if type(path) ~= "string" or path == "" or not size or size <= 0 then
+        return nil
+    end
+    local ImageWidget = require("ui/widget/imagewidget")
+    local iw = ImageWidget:new{
+        file                  = path,
+        width                 = size,
+        height                = size,
+        is_icon               = true,
+        alpha                 = true,
+        original_in_nightmode = true,  -- keep icons legible in night mode
+    }
+    if pcall(function() iw:_render() end) then
+        return iw
+    end
+    pcall(function() iw:free() end)
+    return nil
+end
+
 --- Clears every system icon override.
 function M.resetAll()
     for _, s in ipairs(M.SLOTS) do
@@ -1090,11 +1121,6 @@ local function _reapplyTitlebar()
         end
     end
 
-    -- ── Section heading helper ───────────────────────────────────────────
-    local function _sep(label)
-        return { text = label, is_title = true }
-    end
-
     -- ── One row per slot ─────────────────────────────────────────────────
     local function _makeRow(slot)
         return {
@@ -1240,18 +1266,7 @@ function M.weui_build_system_icons(plugin, ctx_menu, ctx)
         elseif icon_path and M.safeIconPath then
             local safe_path = M.safeIconPath(icon_path, nil)
             if safe_path then
-                local iw = ImageWidget:new{
-                    file    = safe_path,
-                    width   = icon_size,
-                    height  = icon_size,
-                    is_icon = true,
-                    alpha   = true,
-                }
-                if pcall(function() iw:_render() end) then
-                    icon_widget = iw
-                else
-                    iw:free()
-                end
+                icon_widget = M.iconImage(safe_path, icon_size)
             end
         end
         
@@ -1599,9 +1614,6 @@ local function _reqUIManager()
 end
 local function _reqLFS()
     local ok, m = pcall(require, "libs/libkoreader-lfs"); return ok and m or nil
-end
-local function _reqDataStorage()
-    local ok, m = pcall(require, "datastorage"); return ok and m or nil
 end
 
 -- ── Path helpers ─────────────────────────────────────────────────────────

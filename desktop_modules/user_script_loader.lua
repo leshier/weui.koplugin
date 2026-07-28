@@ -298,7 +298,6 @@ function M.sampleScript()
 -- Blocked:  io, os.execute, os.remove, debug, loadfile, dofile, ffi.
 
 local TextWidget = require("ui/widget/textwidget")
-local FrameContainer = require("ui/widget/framecontainer")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local Font = require("ui/font")
 local Screen = require("device").screen

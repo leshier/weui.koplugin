@@ -33,7 +33,6 @@ local SUISettings  = require("weui_store")
 local SUIStyle     = require("weui_style")
 local Privacy      = require("weui_privacy")
 local PAD          = UI.PAD
-local LABEL_H      = UI.LABEL_H
 local CLR_TEXT_SUB = UI.CLR_TEXT_SUB
 
 -- Lazy-loaded shared book helpers (cover, progress bar, book data).
@@ -69,7 +68,6 @@ local _BASE_PCT_GAP    = Screen:scaleBySize(3)   -- before percent / stats rows
 -- Progress bar dimensions
 local _BASE_BAR_H       = Screen:scaleBySize(8)   -- bar height (matches module_reading_goals)
 local _BASE_BAR_PCT_GAP = Screen:scaleBySize(6)   -- horizontal gap between bar and inline pct label
-local _BASE_STATS_SEP_W = Screen:scaleBySize(8)   -- horizontal gap between inline stats items
 local _BASE_PCT_W       = Screen:scaleBySize(32)  -- width reserved for inline pct label (e.g. "100%")
 
 -- Font sizes — derived from the central SUIStyle typographic scale.

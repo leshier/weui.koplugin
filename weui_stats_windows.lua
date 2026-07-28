@@ -1764,7 +1764,29 @@ local function _riGetLastWeekStats()
     return r
 end
 
--- Returns { hours=N, pages=N, book_count=N } across all recorded history.
+-- Returns a list of { date="YYYY-MM-DD", seconds=N } for each day with reading
+-- in [start_ts, end_ts) (end exclusive). Days with no reading are omitted;
+-- callers fill the gaps. Powers the 7-day sparkline.
+local function _riGetDailySeries(start_ts, end_ts)
+    return _withStatsDb({}, function(conn)
+        local out = {}
+        _withStmt(conn, string.format([[
+            SELECT date(start_time, 'unixepoch', 'localtime') AS d,
+                   sum(duration) AS sd
+            FROM page_stat_data
+            WHERE start_time >= %d AND start_time < %d AND duration > 0
+            GROUP BY d
+            ORDER BY d
+        ]], start_ts, end_ts), function(stmt)
+            for row in stmt:rows() do
+                out[#out + 1] = { date = row[1], seconds = tonumber(row[2]) or 0 }
+            end
+        end)
+        return out
+    end)
+end
+
+-- Returns { seconds=N, pages=N, book_count=N } across all recorded history.
 -- Summing _ri_cache year entries avoids an extra DB connection when page 1
 -- has already loaded all years; falls back to a direct DB query otherwise.
 local function _riGetAllTimeStats()
@@ -2405,6 +2427,77 @@ local function _buildInsightsPage2(inner_w, avail_h, streaks, SZ)
         }
     end
 
+    -- 7-day reading-time sparkline (mini bar chart). One bar per day, oldest
+    -- -> today (left -> right); today's bar is solid black, others grey. Day
+    -- initials label the baseline. Cached per session as "spark7".
+    local function makeSparkline()
+        local now_ts   = os.time()
+        local now_t    = os.date("*t", now_ts)
+        local midnight = now_ts - (now_t.hour * 3600 + now_t.min * 60 + now_t.sec)
+        local start_ts = midnight - 6 * 86400
+        local end_ts   = midnight + 86400  -- include today
+        local series
+        if _ri_cache["spark7"] then
+            series = _ri_cache["spark7"]
+        else
+            series = _riGetDailySeries(start_ts, end_ts)
+            _ri_cache["spark7"] = series
+        end
+        local by_date = {}
+        for _, d in ipairs(series) do by_date[d.date] = d.seconds end
+
+        local DOW = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" }  -- %w: 0=Sun..6=Sat
+        local days = {}
+        local max_s = 1
+        for i = 0, 6 do
+            local t  = start_ts + i * 86400
+            local ds = os.date("%Y-%m-%d", t)
+            local s  = by_date[ds] or 0
+            if s > max_s then max_s = s end
+            days[#days + 1] = {
+                seconds  = s,
+                label    = DOW[tonumber(os.date("%w", t)) + 1],
+                is_today = (i == 6),
+            }
+        end
+
+        local n       = 7
+        local gap     = SZ(Screen:scaleBySize(6))
+        local bar_w   = math.floor((row_inner - (n - 1) * gap) / n)
+        local bar_h   = SZ(Screen:scaleBySize(44))
+        local lbl_h   = face_sub.size + SZ(Screen:scaleBySize(2))
+        local total_h = bar_h + lbl_h
+
+        local bars = HorizontalGroup:new{ align = "bottom" }
+        local lbls = HorizontalGroup:new{ align = "top" }
+        for i, d in ipairs(days) do
+            local ratio     = (d.seconds > 0) and (d.seconds / max_s) or 0
+            local bh        = math.floor(ratio * bar_h + 0.5)
+            if bh == 0 and d.seconds > 0 then bh = 1 end
+            local bar_color = d.is_today and CLR_BLACK or Blitbuffer.COLOR_GRAY_B
+            local lbl_color = d.is_today and CLR_BLACK or CLR_BORDER
+            local col = VerticalGroup:new{ align = "center" }
+            if bh > 0 then
+                col[#col + 1] = LineWidget:new{ dimen = Geom:new{ w = bar_w, h = bh }, background = bar_color }
+            end
+            -- thin baseline so zero-value days still register a tick
+            col[#col + 1] = LineWidget:new{ dimen = Geom:new{ w = bar_w, h = SZ(Screen:scaleBySize(2)) }, background = bar_color }
+            bars[#bars + 1] = BottomContainer:new{ dimen = Geom:new{ w = bar_w, h = total_h }, col }
+            if i < n then bars[#bars + 1] = HorizontalSpan:new{ width = gap } end
+            lbls[#lbls + 1] = _CenterContainer:new{
+                dimen = Geom:new{ w = bar_w, h = lbl_h },
+                TextWidget:new{ text = d.label, face = face_sub, fgcolor = lbl_color },
+            }
+            if i < n then lbls[#lbls + 1] = HorizontalSpan:new{ width = gap } end
+        end
+
+        return VerticalGroup:new{ align = "left",
+            bars,
+            VerticalSpan:new{ width = SZ(Screen:scaleBySize(2)) },
+            lbls,
+        }
+    end
+
     local week_row = FrameContainer:new{
         bordersize = SUIStyle.BORDER_SZ,
         color      = CLR_BORDER,
@@ -2412,6 +2505,15 @@ local function _buildInsightsPage2(inner_w, avail_h, streaks, SZ)
         padding    = 0, margin = 0,
         VerticalGroup:new{
             align = "left",
+            FrameContainer:new{
+                bordersize = 0, padding = 0,
+                padding_left   = PAD_H,
+                padding_right  = PAD_H,
+                padding_top    = SZ(Screen:scaleBySize(10)),
+                padding_bottom = SZ(Screen:scaleBySize(6)),
+                makeSparkline(),
+            },
+            makeRowSep(),
             makeIconRow(SUIStyle.icon("clock"), _("Average per day"), avg_time_str),
             makeRowSep(),
             makeIconRow(SUIStyle.icon("page"), _("Pages per day"), avg_pages_str),

@@ -4,6 +4,6 @@ return {
     name        = "weui",
     fullname    = _("We UI"),
     description = _([[A We UI for KOReader with integrated WeRead bookshelf, search, download, and reading support.]]),
-    version     = "1.1.0",
+    version     = "1.2.0",
     author      = "leshier",
 }

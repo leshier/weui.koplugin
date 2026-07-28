@@ -27,8 +27,6 @@ local SUIStyle    = require("weui_style")
 local StreakFreeze = require("weui_streak")
 local CLR_TEXT_SUB = UI.CLR_TEXT_SUB
 local PAD     = UI.PAD
-local MOD_GAP = UI.MOD_GAP
-local LABEL_H = UI.LABEL_H
 
 local _CLR_TEXT_BLK  = Blitbuffer.COLOR_BLACK
 local _CLR_CARD_BDR  = Blitbuffer.gray(0.72)

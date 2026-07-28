@@ -63,16 +63,6 @@ local function resolveWeRead()
     return (plugin and plugin._weread_plugin) or (fm and fm.weread)
 end
 
-local function format_duration(seconds)
-    seconds = math.max(0, math.floor(tonumber(seconds) or 0))
-    if seconds < 60 then return _("< 1 min") end
-    local h = math.floor(seconds / 3600)
-    local m = math.floor((seconds % 3600) / 60)
-    if h > 0 and m > 0 then return T(_("%1 h %2 min"), h, m) end
-    if h > 0 then return T(_("%1 h"), h) end
-    return T(_("%1 min"), m)
-end
-
 local function format_duration_short(seconds)
     seconds = math.max(0, math.floor(tonumber(seconds) or 0))
     local h = math.floor(seconds / 3600)

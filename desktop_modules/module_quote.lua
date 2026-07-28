@@ -78,7 +78,6 @@ local _BASE_QUOTE_ATTR_H = Screen:scaleBySize(20)
 
 -- Base height: PAD + approx 4 lines of text + gap + attribution + PAD2
 
-local _BASE_QUOTE_H = PAD + _BASE_QUOTE_FS * 4 + _BASE_QUOTE_GAP + _BASE_QUOTE_ATTR_H + PAD2
 
 
 

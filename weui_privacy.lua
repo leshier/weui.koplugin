@@ -103,23 +103,6 @@ local function saveCollections(colls)
     SUISettings:set(KEY_COLLS, colls)
 end
 
--- Get the list of book filepaths in a named collection (from ReadCollection).
-local function getCollectionBooks(coll_name)
-    if type(coll_name) ~= "string" or coll_name == "" then return {} end
-    local ok_rc, RC = pcall(require, "readcollection")
-    if not ok_rc or not RC then return {} end
-    -- The singleton is already loaded; rc.coll holds the data.
-    local rc = RC.instance or RC
-    if not rc or not rc.coll then return {} end
-    local coll = rc.coll[coll_name]
-    if not coll then return {} end
-    local files = {}
-    for fp, info in pairs(coll) do
-        if type(fp) == "string" then files[#files + 1] = fp end
-    end
-    return files
-end
-
 -- Returns true if the collection with this name is marked private.
 local function isPrivateCollection(coll_name)
     if type(coll_name) ~= "string" or coll_name == "" then return false end

@@ -1510,18 +1510,7 @@ function QA.weui_build_qa_icons(plugin, ctx_menu, ctx)
         elseif icon_path then
             local safe_path = ok_ss and SUIStyle and SUIStyle.safeIconPath(icon_path, nil)
             if safe_path then
-                local iw = ImageWidget:new{
-                    file    = safe_path,
-                    width   = icon_size,
-                    height  = icon_size,
-                    is_icon = true,
-                    alpha   = true,
-                }
-                if pcall(function() iw:_render() end) then
-                    icon_widget = iw
-                else
-                    iw:free()
-                end
+                icon_widget = SUIStyle.iconImage(safe_path, icon_size)
             end
         end
         
@@ -2893,18 +2882,7 @@ function QA.buildQARowIcon(icon_value, fallback_label, scale_fn)
     elseif icon_value then
         local safe_path = ok_ss and SUIStyle and SUIStyle.safeIconPath(icon_value, nil)
         if safe_path then
-            local iw = ImageWidget:new{
-                file    = safe_path,
-                width   = icon_size,
-                height  = icon_size,
-                is_icon = true,
-                alpha   = true,
-            }
-            if pcall(function() iw:_render() end) then
-                icon_widget = iw
-            else
-                iw:free()
-            end
+            icon_widget = SUIStyle.iconImage(safe_path, icon_size)
         end
     end
 

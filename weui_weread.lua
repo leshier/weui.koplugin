@@ -1,24 +1,17 @@
 local BD = require("ui/bidi")
-local Blitbuffer = require("ffi/blitbuffer")
 local ButtonDialog = require("ui/widget/buttondialog")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Dispatcher = require("dispatcher")
 local Event = require("ui/event")
-local FrameContainer = require("ui/widget/container/framecontainer")
 local Geom = require("ui/geometry")
-local HorizontalGroup = require("ui/widget/horizontalgroup")
-local HorizontalSpan = require("ui/widget/horizontalspan")
-local ImageWidget = require("ui/widget/imagewidget")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local logger = require("logger")
 local Menu = require("ui/widget/menu")
 local PathChooser = require("ui/widget/pathchooser")
-local Size = require("ui/size")
 local time = require("ui/time")
 local UIManager = require("ui/uimanager")
-local VerticalGroup = require("ui/widget/verticalgroup")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local T = require("ffi/util").template
 
@@ -82,17 +75,9 @@ local function make_menu_icon(path)
     if type(path) ~= "string" or path == "" then
         return nil
     end
-    local ok, icon = pcall(ImageWidget.new, ImageWidget, {
-        file = path,
-        width = MENU_ICON_SIZE,
-        height = MENU_ICON_SIZE,
-        is_icon = true,
-        alpha = true,
-    })
-    if not ok or not icon or not pcall(function() icon:_render() end) then
-        if icon and icon.free then icon:free() end
-        return nil
-    end
+    local SUIStyle = require("weui_style")
+    local icon = SUIStyle.iconImage(path, MENU_ICON_SIZE)
+    if not icon then return nil end
     return CenterContainer:new{
         dimen = Geom:new{ w = MENU_ICON_BOX, h = MENU_ICON_BOX },
         icon,

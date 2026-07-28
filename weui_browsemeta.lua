@@ -572,36 +572,6 @@ local function _sortFiles(files, dim_key)
 end
 
 -- ---------------------------------------------------------------------------
--- Representative file
--- ---------------------------------------------------------------------------
-
-local function _getRepresentativeFile(base_dir, dim_key, filter_value)
-    local leaf_path = _leafPath(base_dir, dim_key, filter_value)
-
-    local overrides   = SUISettings:readSetting(_FC_COVERS_KEY) or {}
-    local override_fp = overrides[leaf_path]
-    if override_fp and lfs.attributes(override_fp, "mode") == "file" then
-        _repr_file_cache[leaf_path] = override_fp
-        return override_fp
-    end
-
-    if _repr_file_cache[leaf_path] ~= nil then
-        return _repr_file_cache[leaf_path] or nil
-    end
-    _ensureCacheBaseDir(base_dir)
-    local files = _matching_files_cache[leaf_path]
-    if not files then
-        local col = DIMS[dim_key].db_column
-        files = _getMatchingFiles(base_dir, { { col, filter_value } })
-        _sortFiles(files, dim_key)
-        _matching_files_cache[leaf_path] = files
-    end
-    local fp = files[1] and files[1][1] or false
-    _repr_file_cache[leaf_path] = fp
-    return fp or nil
-end
-
--- ---------------------------------------------------------------------------
 -- Fake attributes — single shared instance for virtual directory entries.
 -- ---------------------------------------------------------------------------
 

@@ -166,19 +166,7 @@ local function buildPanel(touch_menu)
             local icon_path = ok_style and SUIStyle and entry.icon
                 and SUIStyle.safeIconPath and SUIStyle.safeIconPath(entry.icon, nil)
             if icon_path then
-                local iw = ImageWidget:new{
-                    file    = icon_path,
-                    width   = icon_size,
-                    height  = icon_size,
-                    is_icon = true,
-                    alpha   = true,
-                }
-                local ok_render = pcall(function() iw:_render() end)
-                if ok_render then
-                    icon_widget = iw
-                else
-                    iw:free()
-                end
+                icon_widget = SUIStyle.iconImage(icon_path, icon_size)
             end
             if not icon_widget then
                 icon_widget = TextWidget:new{

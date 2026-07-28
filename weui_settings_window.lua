@@ -59,7 +59,6 @@ local Registry    = require("desktop_modules/moduleregistry")
 local SUISettings = require("weui_store")
 
 local SortWidget  = require("ui/widget/sortwidget")
-local ButtonDialog = require("ui/widget/buttondialog")
 local logger      = require("logger")
 
 local SettingsWindow = {}

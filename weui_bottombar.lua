@@ -65,12 +65,6 @@ local function _QA()
     return package.loaded["weui_quickactions"] or require("weui_quickactions")
 end
 
--- Lazy reference to weui_browsemeta — avoids loading the module at startup when
--- the Browse by Authors/Series feature may not be in use.
-local function _BM()
-    return package.loaded["weui_browsemeta"] or require("weui_browsemeta")
-end
-
 -- Action-only tabs: these fire a dialog/toggle without becoming the active tab.
 -- Used by onTabTap (early-return guard), setActiveAndRefreshFM (write guard),
 -- and navigate() (active_action write guard).
@@ -209,11 +203,9 @@ end
 -- VerticalSpan and LineWidget singletons — created once per layout, reused
 -- across all tab cell renders. Declared before invalidateDimCache and
 -- buildTabCell so all references resolve correctly.
-local _vspan_icon_top = nil
 local _vspan_icon_txt = nil
 function M.invalidateDimCache()
     _dim             = {}
-    _vspan_icon_top  = nil
     _vspan_icon_txt  = nil
 end
 
@@ -480,18 +472,10 @@ function M.buildTabCell(action_id, active, tab_w, mode)
                 if bar_style == "framed" then
                     vg[#vg + 1] = _makeColoredIcon(safe_file, M.ICON_SZ(), item_fg)
                 else
-                    local iw = ImageWidget():new{
-                        file    = safe_file,
-                        width   = M.ICON_SZ(),
-                        height  = M.ICON_SZ(),
-                        is_icon = true,
-                        alpha   = true,
-                    }
-                    local ok_render = pcall(function() iw:_render() end)
-                    if ok_render then
+                    local iw = SUIStyle.iconImage(safe_file, M.ICON_SZ())
+                    if iw then
                         vg[#vg + 1] = iw
                     else
-                        iw:free()
                         logger.warn("weui/bottombar: buildTabCell ignorou imagem corrompida:", safe_file)
                     end
                 end

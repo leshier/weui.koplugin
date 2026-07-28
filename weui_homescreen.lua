@@ -353,7 +353,6 @@ local Homescreen = { _instance = nil }
 -- Pre-computed empty-state pixel constants (computed once at load time).
 -- ---------------------------------------------------------------------------
 local _EMPTY_H        = Screen:scaleBySize(80)
-local _EMPTY_TITLE_H  = Screen:scaleBySize(30)
 local _EMPTY_GAP        = Screen:scaleBySize(12)
 local _face_empty_title = Font:getFace(SUIStyle.FACE_REGULAR,    SUIStyle.FS_TITLE)     -- FS_TITLE (22)
 local _face_empty_sub   = Font:getFace(SUIStyle.FACE_REGULAR,  SUIStyle.FS_SUBTITLE)  -- FS_SUBTITLE (20)

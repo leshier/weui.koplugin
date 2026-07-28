@@ -28,7 +28,6 @@ local UI  = require("weui_core")
 local SUISettings = require("weui_store")
 local SUIStyle    = require("weui_style")
 local PAD = UI.PAD
-local LABEL_H = UI.LABEL_H
 local CLR_TEXT_SUB = UI.CLR_TEXT_SUB
 
 local _BASE_PH_FS = SUIStyle.FS_BODY    -- 18: placeholder text
