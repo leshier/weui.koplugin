@@ -71,7 +71,10 @@ M.LABEL_H       = M.LABEL_PAD_TOP + M.LABEL_PAD_BOT + M.LABEL_TEXT_H
 
 -- Shared secondary text colour used across all desktop modules.
 -- Edit this single value to retheme every module at once.
-M.CLR_TEXT_SUB  = Blitbuffer.COLOR_BLACK
+-- A medium grey (not pure black) so secondary text/metadata reads as a
+-- distinct layer below primary text on B&W e-ink. Keep in sync with
+-- SUIStyle.GRAY.sub in weui_style.lua.
+M.CLR_TEXT_SUB  = Blitbuffer.gray(0.45)
 
 -- ---------------------------------------------------------------------------
 -- Landscape reduction factor — single source of truth.

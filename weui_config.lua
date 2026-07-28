@@ -1212,8 +1212,10 @@ function M.openStatsDB()
     if not _indexes_created then
         local idx_ok = pcall(function()
             conn:exec("CREATE INDEX IF NOT EXISTS idx_weui_book_md5 ON book(md5);")
-            conn:exec("CREATE INDEX IF NOT EXISTS idx_weui_pagestat_book ON page_stat(id_book);")
-            conn:exec("CREATE INDEX IF NOT EXISTS idx_weui_pagestat_time ON page_stat(start_time);")
+            -- page_stat is a VIEW in KOReader's statistics DB; SQLite cannot
+            -- index a view, so index the base table page_stat_data instead.
+            conn:exec("CREATE INDEX IF NOT EXISTS idx_weui_pagestat_book ON page_stat_data(id_book);")
+            conn:exec("CREATE INDEX IF NOT EXISTS idx_weui_pagestat_time ON page_stat_data(start_time);")
         end)
         if idx_ok then _indexes_created = true end
     end

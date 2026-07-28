@@ -32,6 +32,16 @@ local unpack_args = unpack or table.unpack
 local _real_show_reader = nil
 local _title_cache = {}
 
+-- Forward declaration: _scheduleRelock / markUnlocked / lockNow (defined
+-- below) call invalidateBookCaches, which is itself defined further down.
+-- Without this forward declaration those callers would resolve to a nil
+-- global at runtime (Lua binds the reference lexically at definition time).
+local invalidateBookCaches
+
+-- Set briefly by the history onMenuSelect patch while it re-dispatches an open
+-- after the user just unlocked, so the showReader patch doesn't re-prompt.
+M._bypass_privacy = false
+
 local function norm(path)
     return type(path) == "string" and path or ""
 end
@@ -169,6 +179,11 @@ local function isUnlocked()
 end
 
 -- Records a successful unlock: starts the session and arms the relock timer.
+-- NOTE: we intentionally do NOT call invalidateBookCaches here. Doing so during
+-- the open-book flow (promptUnlock -> markUnlocked) refreshes the homescreen
+-- mid-open, which yanks the homescreen to the foreground ("jumps to home").
+-- The homescreen re-renders naturally on return from the book, revealing
+-- private covers then. lockNow() still refreshes on the reverse transition.
 local function markUnlocked()
     _unlocked_at = os.time()
     _scheduleRelock()
@@ -251,19 +266,38 @@ local function getBookMeta(path)
         end)
     end
 
-    -- cover thumbnail (small, for the dialog)
+    -- cover thumbnail (small, for the dialog). This dialog is only shown AFTER
+    -- the user unlocked, so fetch the REAL cover, bypassing our BookInfoManager
+    -- hook (which strips covers for locked private books). SH.getBookCover can't
+    -- be used: it routes through Config.getCoverBB -> the hooked BIM and would
+    -- come back empty. Go straight to the original BIM.getBookInfo instead.
     pcall(function()
-        local SH = package.loaded["desktop_modules/module_books_shared"]
-        if SH and type(SH.getBookCover) == "function" then
-            local Screen = require("device").screen
-            local cw = Screen:scaleBySize(120)
-            local ch = Screen:scaleBySize(160)
-            -- getBookCover is a plain function (not a method): no SH as first arg.
-            local ok, cover = pcall(SH.getBookCover, path, cw, ch, nil, 0.10)
-            if ok and cover then
-                meta.cover = cover
-            end
-        end
+        local ok_bim, BIM = pcall(require, "bookinfomanager")
+        if not ok_bim or not BIM then return end
+        local getinfo = BIM._weui_privacy_orig_getBookInfo or BIM.getBookInfo
+        local ok_i, info = pcall(getinfo, BIM, path, true)
+        if not (ok_i and info and info.has_cover and info.cover_bb) then return end
+        local Screen        = require("device").screen
+        local ImageWidget   = require("ui/widget/imagewidget")
+        local FrameContainer = require("ui/widget/container/framecontainer")
+        local Size          = require("ui/size")
+        local Blitbuffer    = require("ffi/blitbuffer")
+        local cw = Screen:scaleBySize(120)
+        local ch = Screen:scaleBySize(160)
+        local img = ImageWidget:new{
+            image            = info.cover_bb,
+            image_disposable = false,  -- bb is owned by BIM's cache; do not free
+            width            = cw,
+            height           = ch,
+            scale_factor     = 1,      -- ImageWidget scales the bb to cw×ch
+        }
+        meta.cover = FrameContainer:new{
+            padding    = 0,
+            margin     = 0,
+            bordersize = Size.border.thin,
+            background = Blitbuffer.COLOR_WHITE,
+            img,
+        }
     end)
 
     return meta
@@ -414,7 +448,7 @@ local function showBookDetailsAndConfirm(path, on_confirm, on_cancel)
     UIManager:show(dialog)
 end
 
-local function invalidateBookCaches(path)
+function invalidateBookCaches(path)
     _title_cache[norm(path)] = nil
     pcall(function() SUISettings:del("weui_stale_books_v1") end)
     local SH = package.loaded["desktop_modules/module_books_shared"]
@@ -481,6 +515,10 @@ function M.isPrivateBook(path, title)
     path = norm(path)
     if path == "" and normalizeTitle(title) == "" then return false end
     local books = getBooks()
+    -- Fast path: nothing is marked private at all -> never private. Avoids the
+    -- (potentially DS.open-ing) title read below for the common case where
+    -- privacy is not in use, so getBookCover / BookInfoManager hooks stay cheap.
+    if next(books) == nil and next(getCollections()) == nil then return false end
     if path ~= "" and books[path] == true then return true end
     local book_title = M.getBookTitle(path, title)
     local key = titleKey(book_title)
@@ -754,8 +792,13 @@ local function promptUnlock(path, on_success)
             },
         }},
     }
-    UIManager:show(dialog)
-    dialog:onShowKeyboard()
+    -- Defer to the next UI tick: showReader runs after onMenuSelect's
+    -- close_callback has closed the history menu, so the underlying FM/home
+    -- is mid-reveal and would paint over a synchronously-shown dialog.
+    UIManager:scheduleIn(0, function()
+        UIManager:show(dialog)
+        dialog:onShowKeyboard()
+    end)
 end
 
 local function promptConfirmPassword(on_success)
@@ -853,7 +896,7 @@ function M.patchReaderUI()
             self_reader = ReaderUI
         end
         local filepath = norm(path)
-        if filepath ~= "" and M.isPrivateBook(filepath) then
+        if filepath ~= "" and M.isPrivateBook(filepath) and not M._bypass_privacy then
             local args = { ... }
             M.requestAccess(filepath, function()
                 orig_show_reader(self_reader, path, unpack_args(args))
@@ -873,6 +916,10 @@ function M.patchHistory()
     FMH._weui_privacy_history_patched = true
     FMH._weui_privacy_orig_updateItemTable = orig_update
     FMH.updateItemTable = function(self_hist, ...)
+        -- Unlocked session: show real titles/authors in history.
+        if M.isUnlocked() then
+            return orig_update(self_hist, ...)
+        end
         local RH = require("readhistory")
         local hist = RH and RH.hist
         if type(hist) ~= "table" then
@@ -882,7 +929,7 @@ function M.patchHistory()
         local changed = false
         for _, item in ipairs(hist) do
             local display_item = item
-            if item and item.file and M.isPrivateBook(item.file, item.text) then
+            if item and item.file and M.isPrivateBook(item.file) then
                 display_item = {}
                 for k, v in pairs(item) do display_item[k] = v end
                 display_item.text = M.privateTitle()
@@ -902,7 +949,7 @@ function M.patchHistory()
         if not ok then error(result) end
         if self_hist.booklist_menu and self_hist.booklist_menu.item_table then
             for _, item in ipairs(self_hist.booklist_menu.item_table) do
-                if item and item.file and M.isPrivateBook(item.file, item.text) then
+                if item and item.file and M.isPrivateBook(item.file) then
                     item.text = M.privateTitle()
                     item.author = M.privateAuthor()
                     item.mandatory = M.privateAuthor()
@@ -911,45 +958,41 @@ function M.patchHistory()
         end
         return result
     end
+
+    -- Pre-check privacy in onMenuSelect so the password dialog shows OVER the
+    -- history menu (before close_callback closes it). Without this, showReader
+    -- runs only after close_callback -> menu closes -> homescreen reveals ->
+    -- dialog appears on the homescreen ("jumps to home to enter password").
+    local orig_onMenuSelect = FMH.onMenuSelect
+    if type(orig_onMenuSelect) == "function" and not FMH._weui_privacy_onMenuSelect_patched then
+        FMH._weui_privacy_onMenuSelect_patched = true
+        FMH._weui_privacy_orig_onMenuSelect = orig_onMenuSelect
+        FMH.onMenuSelect = function(self_hist, item)
+            local file = item and item.file
+            if file and M.isPrivateBook(file) and not M.isUnlocked() and not M._bypass_privacy then
+                M.requestAccess(file, function()
+                    -- Bypass the showReader patch's re-prompt on the open that
+                    -- follows (the user just authenticated).
+                    M._bypass_privacy = true
+                    orig_onMenuSelect(self_hist, item)
+                    M._bypass_privacy = false
+                end)
+                return
+            end
+            return orig_onMenuSelect(self_hist, item)
+        end
+    end
 end
 
 function M.maskBookListItems(item_table)
+    -- Intentionally a no-op. Item-copy masking broke CoverBrowser mosaic tap
+    -- handling (a single tap fired onMenuSelect for multiple items). Private
+    -- books are hidden instead via the BookInfoManager hook (placeholder cover
+    -- + masked bookinfo.title) in mosaic/cover views, and via getBookCover on
+    -- the homescreen. Kept (and called by patchBookList) as a harmless
+    -- pass-through so a future list-view-only masking approach can hook here.
     if type(item_table) ~= "table" then return item_table end
-    local changed = false
-    local masked_table = {}
-    for i, item in ipairs(item_table) do
-        local masked_item = item
-        local file = type(item) == "table" and (item.path or item.file) or nil
-        if file then
-            local title = item.text
-            if type(item.doc_props) == "table" then
-                title = item.doc_props.display_title or item.doc_props.title or title
-            end
-            if M.isPrivateBook(file, title) then
-                masked_item = {}
-                for k, v in pairs(item) do masked_item[k] = v end
-                masked_item.text = M.privateTitle()
-                masked_item.mandatory = M.privateAuthor()
-                if type(item.doc_props) == "table" then
-                    local doc_props = {}
-                    for k, v in pairs(item.doc_props) do doc_props[k] = v end
-                    doc_props.title = M.privateTitle()
-                    doc_props.display_title = M.privateTitle()
-                    doc_props.authors = M.privateAuthor()
-                    masked_item.doc_props = doc_props
-                end
-                changed = true
-            end
-        end
-        masked_table[i] = masked_item
-    end
-    if not changed then return item_table end
-    for k, v in pairs(item_table) do
-        if type(k) ~= "number" then
-            masked_table[k] = v
-        end
-    end
-    return masked_table
+    return item_table
 end
 
 function M.patchBookList()
@@ -969,6 +1012,123 @@ function M.patchBookList()
             self_list.item_table = M.maskBookListItems(self_list.item_table)
         end
         return orig_switch(self_list, new_title, new_item_table, ...)
+    end
+end
+
+-- A single unified placeholder cover image (rendered once, cached) for private
+-- books in native views. Returned as a COPY per getBookInfo call because
+-- CoverBrowser's ImageWidget frees the cover_bb it receives (image_disposable
+-- defaults to true), so the cached original must never be handed out directly.
+local _private_cover_bb = nil
+local _PC_W, _PC_H = 480, 720  -- large enough that CoverBrowser won't discard it as "too small for the grid"
+
+function M.getPrivateCoverBB()
+    if _private_cover_bb then return _private_cover_bb end
+    local ok, bb = pcall(function()
+        local Blitbuffer = require("ffi/blitbuffer")
+        local w, h = _PC_W, _PC_H
+        local b = Blitbuffer
+        local out = b.new(w, h, b.TYPE_BB8)
+        -- NOTE: Blitbuffer.gray(level) is INVERTED (0=white, 1=black).
+        local bg = b.gray(0.15)  -- light grey
+        out:paintRect(0, 0, w, h, bg)
+        -- Cute line-art padlock: small, rounded body, prominent arc shackle,
+        -- tiny keyhole. Centered with generous margin so it scales fully on
+        -- the homescreen without being cropped or overwhelming the cover.
+        local line = b.gray(0.5)  -- medium grey: softer than black, lower contrast vs the light bg
+        local lw = math.max(4, math.floor(w / 75))
+        local size = math.floor(math.min(w, h) * 0.34)
+        local cx = math.floor(w / 2)
+        local top = math.floor((h - size) / 2)
+        local body_w = math.floor(size * 0.72)
+        local body_h = math.floor(size * 0.56)
+        local body_x = cx - math.floor(body_w / 2)
+        local body_y = top + size - body_h
+        local body_r = math.floor(body_h * 0.34)  -- very round, cute
+        local shackle_r = math.floor(size * 0.24)
+        -- Full shackle ring; bottom half hidden by the body.
+        out:paintCircle(cx, body_y, shackle_r, line, lw)
+        out:paintRect(body_x, body_y, body_w, body_h, bg)  -- erase ring bottom
+        out:paintBorder(body_x, body_y, body_w, body_h, lw, line, body_r)
+        -- Tiny keyhole dot.
+        local kh_r = math.max(2, math.floor(body_h * 0.09))
+        out:paintCircle(cx, body_y + math.floor(body_h * 0.40), kh_r, line)
+        return out
+    end)
+    if ok and bb then _private_cover_bb = bb end
+    return _private_cover_bb
+end
+
+-- Suppress real covers for private books in native views (FileManager mosaic,
+-- history, search) that fetch covers via BookInfoManager. Returns a shallow
+-- copy with cover fields cleared while locked, so BIM's cached bookinfo object
+-- is never mutated. When unlocked, the real cover is shown. BookInfoManager is
+-- a singleton module, so this patch is global (covers CoverBrowser too, which
+-- routes through BIM).
+function M.patchBookInfoManager()
+    local ok_bim, BIM = pcall(require, "bookinfomanager")
+    if not ok_bim or not BIM or BIM._weui_privacy_bim_patched then
+        return
+    end
+    local orig_getBookInfo = BIM.getBookInfo
+    if type(orig_getBookInfo) ~= "function" then return end
+    BIM._weui_privacy_bim_patched = true
+    BIM._weui_privacy_orig_getBookInfo = orig_getBookInfo
+    BIM.getBookInfo = function(self_bim, path, want_cover, ...)
+        local info = orig_getBookInfo(self_bim, path, want_cover, ...)
+        if info and want_cover
+                and type(path) == "string" and path ~= ""
+                and M.isPrivateBook(path) and not M.isUnlocked() then
+            -- Shallow copy so we never mutate BIM's cached bookinfo. Replace
+            -- the real cover with the unified private placeholder image and
+            -- mask title/authors. Using a real cover_bb (has_cover=true) makes
+            -- CoverBrowser render it at full width like any other cover, so the
+            -- frame size matches non-private books (no narrower FakeCover).
+            local masked = {}
+            for k, v in pairs(info) do masked[k] = v end
+            local pcbb = M.getPrivateCoverBB()
+            if pcbb then
+                masked.cover_bb = pcbb:copy()
+                masked.cover_w = _PC_W
+                masked.cover_h = _PC_H
+                masked.has_cover = true
+                masked.ignore_cover = false
+                masked.cover_fetched = "Y"
+            else
+                masked.cover_bb = nil
+                masked.has_cover = false
+                masked.ignore_cover = true
+            end
+            masked.title = M.privateTitle()
+            masked.authors = M.privateAuthor()
+            info = masked
+        end
+        return info
+    end
+end
+
+-- Mask the displayed filename of private books in the native file browser
+-- (书库). FileChooser sets item.text = filename; CoverBrowser's mosaic FakeCover
+-- uses item.text as the filename line, so without this the real filename leaks
+-- even though the cover/title are masked. Only masks while locked. The file
+-- path (item.path) is untouched, so opening still works.
+function M.patchFileChooser()
+    local ok_fc, FC = pcall(require, "ui/widget/filechooser")
+    if not ok_fc or not FC or FC._weui_privacy_getListItem_patched then
+        return
+    end
+    local orig_getListItem = FC.getListItem
+    if type(orig_getListItem) ~= "function" then return end
+    FC._weui_privacy_getListItem_patched = true
+    FC._weui_privacy_orig_getListItem = orig_getListItem
+    FC.getListItem = function(self_fc, dirpath, f, fullpath, attributes, collate, ...)
+        local item = orig_getListItem(self_fc, dirpath, f, fullpath, attributes, collate, ...)
+        if item and item.is_file and fullpath
+                and not M.isUnlocked()
+                and M.isPrivateBook(fullpath) then
+            item.text = M.privateTitle()
+        end
+        return item
     end
 end
 
@@ -1002,11 +1162,26 @@ function M.installHistoryDialogButtons()
         return {
             M.genPrivacyButton(file, function()
                 local menu = FMH.getMenuInstance and FMH.getMenuInstance()
-                if menu and menu._manager then
-                    if menu._manager.file_dialog then
-                        UIManager:close(menu._manager.file_dialog)
-                    end
-                    menu._manager:updateItemTable()
+                if menu then
+                    -- The long-press file_dialog lives on the booklist_menu
+                    -- (menu.file_dialog), not on the FMH manager. Closing
+                    -- menu._manager.file_dialog (nil) left the dialog open.
+                    local dlg = menu.file_dialog
+                        or (menu._manager and menu._manager.file_dialog)
+                    if dlg then UIManager:close(dlg) end
+                    -- Defer the refresh so it runs after the file_dialog close
+                    -- is processed; otherwise the re-render happens behind the
+                    -- dialog and the history list doesn't visibly update.
+                    UIManager:scheduleIn(0, function()
+                        local mgr = menu._manager
+                        if mgr and mgr.updateItemTable then
+                            pcall(function() mgr:updateItemTable() end)
+                        end
+                        if menu.updateItems then
+                            pcall(function() menu:updateItems() end)
+                        end
+                        UIManager:setDirty(menu, "ui")
+                    end)
                 end
             end),
         }
@@ -1112,7 +1287,16 @@ function M.install(_plugin)
     M.patchReaderUI()
     M.patchHistory()
     M.patchBookList()
+    M.patchBookInfoManager()
+    M.patchFileChooser()
+    -- Core modules (ReaderUI/FilemanagerHistory/BookList/FileChooser) may not be
+    -- loaded yet at plugin init; re-apply on the next tick once they are. All
+    -- patch* are idempotent (guarded by a _weui_privacy_*_patched flag).
     UIManager:scheduleIn(0, function()
+        M.patchReaderUI()
+        M.patchHistory()
+        M.patchBookList()
+        M.patchFileChooser()
         M.installFileDialogButtons()
         M.installHistoryDialogButtons()
     end)
@@ -1131,6 +1315,11 @@ function M.teardown()
         FMH.updateItemTable = FMH._weui_privacy_orig_updateItemTable
         FMH._weui_privacy_orig_updateItemTable = nil
         FMH._weui_privacy_history_patched = nil
+    end
+    if FMH and FMH._weui_privacy_onMenuSelect_patched then
+        FMH.onMenuSelect = FMH._weui_privacy_orig_onMenuSelect
+        FMH._weui_privacy_orig_onMenuSelect = nil
+        FMH._weui_privacy_onMenuSelect_patched = nil
     end
     if FMH and FMH.file_dialog_added_buttons then
         local idxp = FMH.file_dialog_added_buttons.index
@@ -1153,6 +1342,18 @@ function M.teardown()
         BL.switchItemTable = BL._weui_privacy_orig_switchItemTable
         BL._weui_privacy_orig_switchItemTable = nil
         BL._weui_privacy_switch_patched = nil
+    end
+    local BIM = package.loaded["bookinfomanager"]
+    if BIM and BIM._weui_privacy_bim_patched then
+        BIM.getBookInfo = BIM._weui_privacy_orig_getBookInfo
+        BIM._weui_privacy_orig_getBookInfo = nil
+        BIM._weui_privacy_bim_patched = nil
+    end
+    local FC = package.loaded["ui/widget/filechooser"]
+    if FC and FC._weui_privacy_getListItem_patched then
+        FC.getListItem = FC._weui_privacy_orig_getListItem
+        FC._weui_privacy_orig_getListItem = nil
+        FC._weui_privacy_getListItem_patched = nil
     end
 end
 

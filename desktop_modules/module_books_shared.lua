@@ -356,10 +356,44 @@ end
 -- ---------------------------------------------------------------------------
 -- getBookCover
 -- ---------------------------------------------------------------------------
-function SH.getBookCover(filepath, w, h, align, stretch_limit)
-    -- Reserve 1px on each side for the border: request a bb that is 2px smaller.
-    local inner_w = math_max(1, w - 2)
-    local inner_h = math_max(1, h - 2)
+function SH.getBookCover(filepath, w, h, align, stretch_limit, force_reveal)
+    -- Privacy: never hand out a real cover for a private book while locked.
+    -- When unlocked (or force_reveal, used by the post-unlock details dialog),
+    -- fall through and show the real cover. Otherwise return the unified mask
+    -- icon cover so every homescreen module (coverdeck / book rows / currently)
+    -- shows the icon instead of the text "隐私书" placeholder.
+    if not force_reveal and Privacy.isPrivateBook(filepath) and not Privacy.isUnlocked() then
+        local pcbb = Privacy.getPrivateCoverBB and Privacy.getPrivateCoverBB()
+        if pcbb then
+            local _border = SUIStyle.BADGE_BORDER_SZ
+            local inner_w = math_max(1, w - 2 * _border)
+            local inner_h = math_max(1, h - 2 * _border)
+            local ok, img = pcall(function()
+                return require("ui/widget/imagewidget"):new{
+                    image            = pcbb,
+                    image_disposable = false,  -- shared cached BB; must not be freed
+                    width            = inner_w,
+                    height           = inner_h,
+                    scale_factor     = 1,
+                }
+            end)
+            if ok and img then
+                return FrameContainer:new{
+                    bordersize = SUIStyle.BADGE_BORDER_SZ, color = _CLR_COVER_BORDER,
+                    padding    = 0, margin = 0,
+                    dimen      = Geom:new{ w = w, h = h },
+                    img,
+                }
+            end
+        end
+        return nil
+    end
+    -- Reserve BADGE_BORDER_SZ on each side so the cover image sits inside the
+    -- border exactly like coverPlaceholder does - avoids mismatched frame
+    -- sizes between real covers and private-book placeholders.
+    local _border = SUIStyle.BADGE_BORDER_SZ
+    local inner_w = math_max(1, w - 2 * _border)
+    local inner_h = math_max(1, h - 2 * _border)
     local bb = Config.getCoverBB(filepath, inner_w, inner_h, align, stretch_limit)
     if not bb then return nil end
     local ok, img = pcall(function()
@@ -593,7 +627,7 @@ function SH.getBookData(filepath, prefetched)
         avg_time = stat_total_time / stat_pages
     end
 
-    if Privacy.isPrivateBook(filepath, meta.title) then
+    if Privacy.isPrivateBook(filepath, meta.title) and not Privacy.isUnlocked() then
         meta.title = Privacy.privateTitle()
         meta.authors = Privacy.privateAuthor()
     end

@@ -1047,7 +1047,16 @@ function WeUIPlugin:init()
             end
         end
         self.ui.menu:registerToMainMenu(self)
-        self:_initWeReadModule()
+        -- Defer WeRead module init off the cold-start critical path: its
+        -- WeReadPlugin.new() opens settings + migrates data (disk I/O) and
+        -- pulls in ~41 lib modules. Init 1s after startup so the homescreen
+        -- paints first; onShowWeRead/onWeReadSyncProgress lazily init if the
+        -- user opens WeRead before the deferred init fires.
+        require("ui/uimanager"):scheduleIn(1, function()
+            if not self._weread_plugin then
+                self:_initWeReadModule()
+            end
+        end)
 
         -- Register gesture-assignable actions via Dispatcher.
         -- After this, KOReader's gesture/keyboard settings will list these
@@ -2521,12 +2530,18 @@ end
 function WeUIPlugin:_updateFMHomeIcon() end
 
 function WeUIPlugin:onShowWeRead()
+    if not self._weread_plugin then
+        self:_initWeReadModule()
+    end
     if self._weread_plugin and type(self._weread_plugin.onShowWeRead) == "function" then
         return self._weread_plugin:onShowWeRead()
     end
 end
 
 function WeUIPlugin:onWeReadSyncProgress()
+    if not self._weread_plugin then
+        self:_initWeReadModule()
+    end
     if self._weread_plugin and type(self._weread_plugin.onWeReadSyncProgress) == "function" then
         return self._weread_plugin:onWeReadSyncProgress()
     end

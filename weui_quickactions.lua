@@ -3140,9 +3140,7 @@ local function _recentMakeCoverCell(SH, fp, bd, cw, ch)
     local InputContainer  = require("ui/widget/container/inputcontainer")
     local Privacy         = require("weui_privacy")
 
-    local cover = Privacy.isPrivateBook(fp, bd.title)
-        and SH.coverPlaceholder(Privacy.privateTitle(), Privacy.privateAuthor(), cw, ch)
-        or SH.getBookCover(fp, cw, ch, nil, 0.10)
+    local cover = SH.getBookCover(fp, cw, ch, nil, 0.10)
         or SH.coverPlaceholder(bd.title, bd.authors, cw, ch)
 
     local ic = InputContainer:new{

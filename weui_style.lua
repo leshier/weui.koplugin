@@ -1456,6 +1456,17 @@ M.BORDER_SZ   = math.max(1, Screen:scaleBySize(1))
 M.BADGE_BORDER_SZ  = require("ui/size").border.thin
 M.BADGE_BORDER_CLR = Blitbuffer.COLOR_GRAY
 
+-- Grayscale ramp for B&W e-ink (Kindle). Prefer these over bare gray(N) so the
+-- whole UI keeps one consistent hierarchy: ink > text > sub > mute > line > fill.
+M.GRAY = {
+    ink  = Blitbuffer.COLOR_BLACK,   -- strongest: active state, primary/progress fill
+    text = Blitbuffer.gray(0.25),    -- primary text
+    sub  = Blitbuffer.gray(0.45),    -- secondary text, metadata, dimmed
+    mute = Blitbuffer.gray(0.62),    -- tertiary/disabled, dimmed icons
+    line = Blitbuffer.gray(0.72),    -- separators, hairlines, cover borders
+    fill = Blitbuffer.gray(0.88),    -- progress track, card background, placeholder bg
+}
+
 -- ---------------------------------------------------------------------------
 -- SUI Font Face Aliases
 -- ---------------------------------------------------------------------------
@@ -1894,6 +1905,18 @@ local _FALLBACKS = {
 -- In-memory cache: role → Blitbuffer color OR false ("tested, not set").
 -- false avoids a store lookup on every paintTo().
 -- Invalidated by setThemeColor() / resetTheme().
+-- Built-in default colours returned by getThemeColor when no user override is
+-- set anywhere in the chain. On a B&W Kindle every "accent" is a grayscale
+-- level - these give the UI a consistent hierarchy (active=ink, secondary
+-- text=sub, separator=line, progress fill=ink on a light track) without
+-- relying on colour. Roles not listed here return nil (caller uses its own
+-- fallback, e.g. white/black backgrounds).
+local _ROLE_DEFAULTS = {
+    accent         = M.GRAY.ink,
+    text_secondary = M.GRAY.sub,
+    separator      = M.GRAY.line,
+}
+
 local _color_cache = {}
 
 --- Converts "#RRGGBB" or "RRGGBB" to a full-colour Blitbuffer color.
@@ -1965,6 +1988,13 @@ function M.getThemeColor(role)
     end
 
     -- 4. Nothing found — cache the sentinel so we skip the store next time.
+    -- 4. No override anywhere - fall back to the role's built-in grayscale
+    --    default (B&W), or nil if the role has none (caller uses its own).
+    local def = _ROLE_DEFAULTS[role]
+    if def then
+        _color_cache[role] = def
+        return def
+    end
     _color_cache[role] = false
     return nil
 end

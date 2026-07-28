@@ -475,9 +475,7 @@ function M.build(w, ctx)
     -- cleared and prefetchBooks() re-reads the sidecar, so this is always fresh.
     local prefetched_entry = ctx.prefetched and ctx.prefetched[ctx.current_fp]
     local bd    = SH.getBookData(ctx.current_fp, prefetched_entry)
-    local cover = Privacy.isPrivateBook(ctx.current_fp, bd.title)
-                  and SH.coverPlaceholder(Privacy.privateTitle(), Privacy.privateAuthor(), D.COVER_W, D.COVER_H)
-                  or SH.getBookCover(ctx.current_fp, D.COVER_W, D.COVER_H, nil, 0.10)
+    local cover = SH.getBookCover(ctx.current_fp, D.COVER_W, D.COVER_H, nil, 0.10)
                   or SH.coverPlaceholder(bd.title, bd.authors, D.COVER_W, D.COVER_H)
 
     -- Text column width: full width minus both PADs, cover, and cover gap.

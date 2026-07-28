@@ -315,10 +315,10 @@ local function pickCustomQuote(pfx)
         pos = 1
     end
 
-    SUISettings:saveSetting(_CUSTOM_FILE_KEY,  filename)
-    SUISettings:saveSetting(_CUSTOM_DECK_KEY,  table.concat(deck, ","))
-    SUISettings:saveSetting(_CUSTOM_POS_KEY,   pos)
-    SUISettings:saveSetting(_CUSTOM_COUNT_KEY, n)
+    SUISettings:setNoFlush(_CUSTOM_FILE_KEY,  filename)
+    SUISettings:setNoFlush(_CUSTOM_DECK_KEY,  table.concat(deck, ","))
+    SUISettings:setNoFlush(_CUSTOM_POS_KEY,   pos)
+    SUISettings:setNoFlush(_CUSTOM_COUNT_KEY, n)
     return quotes[idx]
 end
 
@@ -360,11 +360,11 @@ end
 
 local function _saveDeck(deck, pos)
 
-    SUISettings:saveSetting(_DECK_KEY,  table.concat(deck, ","))
+    SUISettings:setNoFlush(_DECK_KEY,  table.concat(deck, ","))
 
-    SUISettings:saveSetting(_POS_KEY,   pos)
+    SUISettings:setNoFlush(_POS_KEY,   pos)
 
-    SUISettings:saveSetting(_COUNT_KEY, #deck)
+    SUISettings:setNoFlush(_COUNT_KEY, #deck)
 
 end
 
@@ -720,11 +720,11 @@ local _HL_COUNT_KEY = "weui_quote_hl_deck_count"
 
 local function _saveHlDeck(deck, pos)
 
-    SUISettings:saveSetting(_HL_DECK_KEY,  table.concat(deck, ","))
+    SUISettings:setNoFlush(_HL_DECK_KEY,  table.concat(deck, ","))
 
-    SUISettings:saveSetting(_HL_POS_KEY,   pos)
+    SUISettings:setNoFlush(_HL_POS_KEY,   pos)
 
-    SUISettings:saveSetting(_HL_COUNT_KEY, #deck)
+    SUISettings:setNoFlush(_HL_COUNT_KEY, #deck)
 
 end
 
