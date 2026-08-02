@@ -15,6 +15,10 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Generator: Poedit 3.9\n"
 
+#: _meta.lua:6
+msgid "A We UI for KOReader with WeRead, private books, and optional Z-Library acquisition with a dedicated proxy."
+msgstr "为 KOReader 提供微信读书、隐私书，以及带独立代理的可选 Z-Library 书籍渠道。"
+
 #: desktop_modules/module_reading_goals.lua:868
 msgid "  Set Goal  (%d hr/month)"
 msgstr "  设定目标（%d 小时/月）"
@@ -4647,42 +4651,6 @@ msgstr "修改密码"
 msgid "Change private-book password"
 msgstr "修改私密书籍密码"
 
-#: weui_menu.lua
-msgid "Privacy"
-msgstr "隐私保护"
-
-#: weui_menu.lua
-msgid "Auto-relock after idle"
-msgstr "闲置后自动锁定"
-
-#: weui_menu.lua
-msgid "Off (prompt every time)"
-msgstr "关闭（每次都要验证）"
-
-#: weui_menu.lua
-msgid "Lock now"
-msgstr "立即锁定"
-
-#: weui_menu.lua
-msgid "Private Collections"
-msgstr "私密文件夹"
-
-#: weui_menu.lua
-msgid "Add collection to private"
-msgstr "添加文件夹到私密"
-
-#: weui_menu.lua
-msgid "No collections available to add."
-msgstr "没有可添加的文件夹。"
-
-#: weui_menu.lua
-msgid "Select collection"
-msgstr "选择文件夹"
-
-#: weui_menu.lua
-msgid "(no private collections)"
-msgstr "（暂无私密文件夹）"
-
 #: weui_privacy.lua
 msgid "No private-book password is set. Set one first."
 msgstr "尚未设置私密书籍密码，请先设置。"
@@ -4988,3 +4956,235 @@ msgstr "%1分钟"
 #: desktop_modules/module_weread_stats.lua
 msgid "WeRead module is not available."
 msgstr "微信读书模块不可用。"
+
+#: weui_quickactions.lua weui_menu.lua weui_config.lua
+msgid "Z-Library"
+msgstr "Z-Library"
+
+#: weui_quickactions.lua
+msgid "Z-Library plugin is not installed or enabled."
+msgstr "Z-Library 插件未安装或未启用。"
+
+#: weui_quickactions.lua
+msgid "Z-Library could not be opened."
+msgstr "无法打开 Z-Library。"
+
+#: weui_zlibrary_proxy.lua
+msgid "HTTP CONNECT"
+msgstr "HTTP CONNECT"
+
+#: weui_zlibrary_proxy.lua
+msgid "SOCKS5"
+msgstr "SOCKS5"
+
+#: weui_zlibrary_proxy.lua
+msgid "Set a proxy server first."
+msgstr "请先设置代理服务器。"
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy address is invalid."
+msgstr "代理地址无效。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Use http:// or socks5:// for the proxy address."
+msgstr "代理地址请使用 http:// 或 socks5://。"
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy host is invalid."
+msgstr "代理主机无效。"
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy port must be between 1 and 65535."
+msgstr "代理端口必须在 1 到 65535 之间。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Enter proxy credentials in the separate username and password fields."
+msgstr "请在单独的用户名和密码项中填写代理凭据。"
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy address must not contain a path, query, or fragment."
+msgstr "代理地址不能包含路径、查询参数或片段。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy username and password must each be at most 255 bytes."
+msgstr "代理用户名和密码分别不能超过 255 字节。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Invalid configuration"
+msgstr "配置无效"
+
+#: weui_zlibrary_proxy.lua
+msgid "No Z-Library server address is available."
+msgstr "没有可用的 Z-Library 服务器地址。"
+
+#: weui_zlibrary_proxy.lua
+msgid "No HTTP response received."
+msgstr "未收到 HTTP 响应。"
+
+#: weui_zlibrary_proxy.lua
+msgid "The value is invalid."
+msgstr "输入值无效。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Z-Library proxy server"
+msgstr "Z-Library 代理服务器"
+
+#: weui_zlibrary_proxy.lua
+msgid ""
+"HTTP CONNECT: http://host:port\n"
+"SOCKS5 with remote DNS: socks5://host:port"
+msgstr ""
+"HTTP CONNECT：http://主机:端口\n"
+"SOCKS5 远程解析域名：socks5://主机:端口"
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy address cannot be empty."
+msgstr "代理地址不能为空。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy username"
+msgstr "代理用户名"
+
+#: weui_zlibrary_proxy.lua
+msgid "Optional"
+msgstr "可选"
+
+#: weui_zlibrary_proxy.lua
+msgid "Leave empty when the proxy does not require authentication."
+msgstr "代理无需认证时请留空。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy username is too long."
+msgstr "代理用户名过长。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy password"
+msgstr "代理密码"
+
+#: weui_zlibrary_proxy.lua
+msgid "Enter a replacement, or leave empty to clear"
+msgstr "输入新密码，留空则清除"
+
+#: weui_zlibrary_proxy.lua
+msgid "The password is stored in plain text in the local We UI settings file. It is never shown in menus or logs."
+msgstr "密码会以明文保存在本机 We UI 设置文件中，但不会显示在菜单或日志里。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy password is too long."
+msgstr "代理密码过长。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Testing Z-Library proxy…"
+msgstr "正在测试 Z-Library 代理……"
+
+#: weui_zlibrary_proxy.lua
+#, lua-format
+msgid ""
+"Proxy test succeeded.\n"
+"\n"
+"%s\n"
+"HTTP status: %d\n"
+"Time: %d ms"
+msgstr ""
+"代理测试成功。\n"
+"\n"
+"%s\n"
+"HTTP 状态：%d\n"
+"耗时：%d 毫秒"
+
+#: weui_zlibrary_proxy.lua
+#, lua-format
+msgid ""
+"Proxy test failed. No direct connection was attempted.\n"
+"\n"
+"%s"
+msgstr ""
+"代理测试失败，未尝试直连。\n"
+"\n"
+"%s"
+
+#: weui_zlibrary_proxy.lua
+msgid "Unknown error"
+msgstr "未知错误"
+
+#: weui_zlibrary_proxy.lua
+msgid "Clear the Z-Library proxy server and credentials?"
+msgstr "清除 Z-Library 代理服务器和认证信息？"
+
+#: weui_zlibrary_proxy.lua
+msgid "Z-Library proxy settings cleared."
+msgstr "Z-Library 代理设置已清除。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Use proxy for all Z-Library traffic"
+msgstr "Z-Library 的所有流量使用代理"
+
+#: weui_zlibrary_proxy.lua
+msgid "Z-Library proxy disabled."
+msgstr "Z-Library 代理已关闭。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Z-Library proxy enabled. If the proxy fails, Z-Library will not connect directly."
+msgstr "Z-Library 代理已启用。代理失败时不会直连。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy server"
+msgstr "代理服务器"
+
+#: weui_zlibrary_proxy.lua
+msgid "Test proxy connection"
+msgstr "测试代理连接"
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy behavior and Kindle tips"
+msgstr "代理规则与 Kindle 使用提示"
+
+#: weui_zlibrary_proxy.lua
+msgid ""
+"Only Z-Library traffic uses this proxy, including login, search, covers, book downloads, mirror discovery, favorites, and Z-Library updates.\n"
+"\n"
+"HTTP proxies use CONNECT for HTTPS. SOCKS5 sends target hostnames to the proxy for remote DNS resolution. A proxy failure always blocks the request; there is no direct fallback. Use only a proxy server you trust.\n"
+"\n"
+"127.0.0.1 means the Kindle itself. For a proxy running on a computer, phone, or router, enter its LAN IP and allow LAN connections. Using a proxy IP also avoids a local DNS lookup for the proxy server."
+msgstr ""
+"只有 Z-Library 流量使用此代理，包括登录、搜索、封面、书籍下载、镜像发现、收藏和 Z-Library 更新。\n"
+"\n"
+"HTTP 代理通过 CONNECT 传输 HTTPS；SOCKS5 会把目标域名交给代理端解析。代理失败时请求会被阻止，绝不会改为直连。请只使用你信任的代理服务器。\n"
+"\n"
+"127.0.0.1 代表 Kindle 自身。如果代理运行在电脑、手机或路由器上，请填写其局域网 IP，并允许局域网连接。填写代理 IP 也能避免在本机解析代理服务器域名。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Clear proxy settings"
+msgstr "清除代理设置"
+
+#: weui_menu.lua
+msgid "Z-Library Proxy"
+msgstr "Z-Library 代理"
+
+#: weui_zlibrary_proxy.lua
+msgid "Not configured"
+msgstr "未配置"
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy authentication failed. Check the username and password."
+msgstr "代理认证失败，请检查用户名和密码。"
+
+#: weui_zlibrary_proxy.lua
+msgid "Could not connect to the proxy server. Check its address, port, and LAN access."
+msgstr "无法连接代理服务器，请检查地址、端口和局域网访问权限。"
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy connection timed out."
+msgstr "代理连接超时。"
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy refused the connection to Z-Library."
+msgstr "代理拒绝连接 Z-Library。"
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy tunnel was created, but the TLS connection to Z-Library failed."
+msgstr "代理隧道已建立，但连接 Z-Library 的 TLS 握手失败。"
+
+#: main.lua weui_quickactions.lua
+msgid "Z-Library proxy protection could not be installed. Network access was blocked to prevent a direct connection."
+msgstr "无法安装 Z-Library 代理保护。为避免直连，已阻止网络访问。"

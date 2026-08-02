@@ -574,14 +574,20 @@ function SUIWindow:close()
                 end
             end
             if not target then return end
-            if not Bottombar.updateNavpagerArrows(target, has_prev, has_next) then
-                local tabs = target._navbar_tabs or
-                    (ok_cfg and Config2 and Config2.loadTabConfig and Config2.loadTabConfig()) or {}
-                local mode = (ok_cfg and Config2 and Config2.getNavbarMode and
-                    Config2.getNavbarMode()) or "icons"
-                local FM = package.loaded["apps/filemanager/filemanager"]
-                local plugin = FM and FM.instance and FM.instance._weui_plugin
-                local active = plugin and plugin.active_action
+            local tabs = target._navbar_tabs or
+                (ok_cfg and Config2 and Config2.loadTabConfig and Config2.loadTabConfig()) or {}
+            local mode = (ok_cfg and Config2 and Config2.getNavbarMode and
+                Config2.getNavbarMode()) or "icons"
+            local FM = package.loaded["apps/filemanager/filemanager"]
+            local plugin = FM and FM.instance and FM.instance._weui_plugin
+            local active = plugin and plugin.active_action
+            if target._navbar_force_no_arrows then
+                -- The modal temporarily borrowed the underlying bar for its
+                -- own arrows. Restore the page owner's tabs-only capability,
+                -- rather than leaving those modal arrows behind.
+                local new_bar = Bottombar.buildBarWidget(active, tabs, nil, mode, true)
+                Bottombar.replaceBar(target, new_bar, tabs)
+            elseif not Bottombar.updateNavpagerArrows(target, has_prev, has_next) then
                 local new_bar = Bottombar.buildBarWidgetWithArrows(active, tabs, mode, has_prev, has_next)
                 Bottombar.replaceBar(target, new_bar, tabs)
             end

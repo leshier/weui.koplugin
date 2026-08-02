@@ -829,6 +829,61 @@ local function _registerBuiltins()
             end,
         },
         {
+            id    = "zlibrary",
+            label = _("Z-Library"),
+            icon  = Config.ICON.zlibrary,
+            is_in_place = true,
+            is_async_in_place = true,
+            execute = function(ctx)
+                local su = ctx.show_unavailable or _unavailToast
+                local zui_ok, ZlibraryUI = pcall(require, "weui_zlibrary_ui")
+                if zui_ok and ZlibraryUI then
+                    local install_ok, installed = pcall(ZlibraryUI.install)
+                    if not install_ok or not installed then
+                        logger.warn("weui: failed to install Z-Library navigation adapter:", tostring(installed))
+                    elseif ZlibraryUI.isOpen and ZlibraryUI.isOpen() then
+                        -- Tapping the already-active Z-Library tab must not
+                        -- stack a second browser and duplicate its requests.
+                        return
+                    end
+                end
+                local FM = package.loaded["apps/filemanager/filemanager"]
+                local ReaderUI = package.loaded["apps/reader/readerui"]
+                local instance = (ReaderUI and ReaderUI.instance and ReaderUI.instance.zlibrary)
+                    or (FM and FM.instance and FM.instance.zlibrary)
+                if not instance then
+                    su(_("Z-Library plugin is not installed or enabled."))
+                    return
+                end
+                -- Apply the Z-Library-only transport before opening the
+                -- companion. This is also a lazy safety net when the shortcut
+                -- is tapped before the deferred startup installer has run.
+                local proxy_ok, Proxy = pcall(require, "weui_zlibrary_proxy")
+                local proxy_enabled = proxy_ok and Proxy and Proxy.isEnabled
+                    and Proxy.isEnabled() or SUISettings:isTrue("weui_zlibrary_proxy_enabled")
+                if proxy_ok and Proxy and type(Proxy.install) == "function" then
+                    local call_ok, installed = pcall(Proxy.install)
+                    if proxy_enabled and (not call_ok or not installed) then
+                        su(_("Z-Library proxy protection could not be installed. Network access was blocked to prevent a direct connection."))
+                        return
+                    end
+                elseif proxy_enabled then
+                    su(_("Z-Library proxy protection could not be installed. Network access was blocked to prevent a direct connection."))
+                    return
+                end
+                -- Call the companion's public event handler directly. A
+                -- Dispatcher event can be swallowed while the WeUI
+                -- homescreen is above FileManager in the window stack.
+                local ok, handled = pcall(function()
+                    return instance:onZlibrarySearch()
+                end)
+                if not ok or handled == false then
+                    logger.warn("weui: failed to open Z-Library:", tostring(handled))
+                    su(_("Z-Library could not be opened."))
+                end
+            end,
+        },
+        {
             id    = "power",
             label = _("Power"),
             icon  = Config.ICON.power,

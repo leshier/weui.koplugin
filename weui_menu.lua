@@ -4637,6 +4637,25 @@ WeUIPlugin.addToMainMenu = function(self, menu_items)
                 end,
                 sub_item_table_func = makeQuickActionsMenu,
             },
+            -- A single native entry: the companion plugin owns its complete
+            -- search, account, server and download UI.
+            {
+                text = _("Z-Library"),
+                callback = function()
+                    require("weui_quickactions").execute("zlibrary", {
+                        plugin = plugin,
+                    })
+                end,
+            },
+            {
+                text_func = function()
+                    local Proxy = require("weui_zlibrary_proxy")
+                    return _("Z-Library Proxy") .. " · " .. Proxy.getStatusText()
+                end,
+                sub_item_table_func = function()
+                    return require("weui_zlibrary_proxy").getMenuItems()
+                end,
+            },
             -- ── Privacy ─────────────────────────────────────────────────────
             -- Private books & collections, password management, auto-relock.
             {

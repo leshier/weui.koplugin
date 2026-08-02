@@ -1,7 +1,8 @@
 # We UI (`weui.koplugin`)
 
 A We UI for KOReader with integrated WeRead (微信读书) bookshelf, search,
-download, and reading support.
+download, and reading support. Z-Library can be installed as an optional
+companion source without changing the classic WeUI home and library layout.
 
 ## Installation
 
@@ -14,6 +15,44 @@ download, and reading support.
    ```
 3. Restart KOReader and enable the plugin in
    `Menu → Tools → More tools → Plugin management`.
+
+### Z-Library companion
+
+Use the combined release archive, or install
+[`zlibrary.koplugin`](https://github.com/ZlibraryKO/zlibrary.koplugin) beside
+`weui.koplugin`. Enable both plugins and restart KOReader. Z-Library then
+appears inside the existing `We UI` settings menu and as an optional action in
+the existing navigation-bar customization list; it is not added to the default
+six-button bar.
+
+The WeUI bottom bar remains visible on Z-Library's main browser, search-result,
+and similar-book pages. Z-Library keeps its own page controls immediately above
+the bar, even when WeUI's global navigation pager is enabled. Book details,
+downloads, credentials, and settings remain focused modal dialogs.
+
+When Z-Library has no download directory configured yet, WeUI initializes it
+to KOReader's current Library root (`home_dir`). A directory selected later in
+Z-Library settings is treated as a user preference and is never overwritten.
+
+#### Z-Library-only proxy
+
+Open `We UI → Z-Library Proxy` to route every Z-Library request through an
+independent proxy. This covers sign-in, search, covers, book downloads, mirror
+discovery, favorites, and the companion plugin's update checks/downloads.
+
+- Supported addresses: `http://host:port` (HTTP CONNECT for HTTPS) and
+  `socks5://host:port` / `socks5h://host:port` (remote target DNS).
+- Optional HTTP Basic and SOCKS5 username/password authentication.
+- Strict failure behavior: when enabled, an invalid or unavailable proxy
+  blocks the Z-Library request; it never falls back to a direct connection.
+- The setting is scoped to Z-Library. WeRead, KOReader updates, OPDS, and other
+  network features keep their existing network route.
+- Proxy passwords are stored as plain text in the local We UI settings file and
+  are masked in the interface and omitted from logs.
+
+On Kindle, `127.0.0.1` refers to the Kindle itself. For Clash or another proxy
+running on a computer, phone, or router, use that device's LAN IP and enable LAN
+access. Using an IP address also avoids a local DNS lookup for the proxy host.
 
 ### From source
 
@@ -54,5 +93,7 @@ belong to their respective owners.
 - The integrated WeRead integration code is licensed under the GNU Affero
   General Public License v3 — see [`LICENSE.weread`](LICENSE.weread) and
   [`NOTICE.weread`](NOTICE.weread).
+- Z-Library remains a separate companion plugin. Combined archives preserve
+  its complete source directory and AGPL-3.0 licence.
 - `fonts/NotoEmoji-Regular.ttf` is licensed under the SIL Open Font License
   1.1 — see [`fonts/LICENSE`](fonts/LICENSE).

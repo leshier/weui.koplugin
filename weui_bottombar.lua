@@ -748,7 +748,7 @@ end
 
 -- Assembles the full bottom bar FrameContainer from all tab cells.
 -- In navpager mode, calls getNavpagerState() internally.
-function M.buildBarWidget(active_action_id, tab_config, num_tabs, mode)
+function M.buildBarWidget(active_action_id, tab_config, num_tabs, mode, force_no_arrows)
     num_tabs    = num_tabs or Config.getNumTabs()
     mode        = mode     or Config.getNavbarMode()
     local screen_w = Screen:getWidth()
@@ -756,7 +756,7 @@ function M.buildBarWidget(active_action_id, tab_config, num_tabs, mode)
     local usable_w = screen_w - side_m * 2
     local hg_args  = { align = "top" }
 
-    if Config.isNavpagerEnabled() then
+    if Config.isNavpagerEnabled() and not force_no_arrows then
         local has_prev, has_next = Config.getNavpagerState()
         return M.buildBarWidgetWithArrows(
             active_action_id, tab_config, mode,
@@ -812,9 +812,11 @@ end
 -- rectangle rendered over the tab at kbfocus_idx (1-based).
 -- Used by the navbar keyboard navigation mode.
 -- Falls back to plain buildBarWidget when navpager is active or kbfocus_idx is nil.
-function M.buildBarWidgetWithKeyFocus(active_action_id, tab_config, kbfocus_idx, num_tabs, mode)
-    if not kbfocus_idx or Config.isNavpagerEnabled() then
-        return M.buildBarWidget(active_action_id, tab_config, num_tabs, mode)
+function M.buildBarWidgetWithKeyFocus(active_action_id, tab_config, kbfocus_idx, num_tabs, mode,
+        force_no_arrows)
+    if not kbfocus_idx or (Config.isNavpagerEnabled() and not force_no_arrows) then
+        return M.buildBarWidget(
+            active_action_id, tab_config, num_tabs, mode, force_no_arrows)
     end
     num_tabs = num_tabs or Config.getNumTabs()
     mode     = mode     or Config.getNavbarMode()
@@ -937,14 +939,21 @@ function M.registerTouchZones(plugin, fm_self)
     local usable_w  = screen_w - side_m * 2
     local bar_y     = navbar_on and (screen_h - nav_h) or screen_h
     local navpager  = Config.isNavpagerEnabled()
+    -- Some injected pages (notably Z-Library) own their pagination and expose
+    -- only WeUI's navigation tabs in the shared bar.  Their touch map must
+    -- mirror that plain bar even when the global navbar mode is Navpager;
+    -- otherwise the invisible edge slots would turn pages in the FM hidden
+    -- underneath the third-party screen.
+    local force_no_arrows = fm_self and fm_self._navbar_force_no_arrows == true
 
     local center_n    = num_tabs
-    local arrows_active = navpager
+    local arrows_active = navpager and not force_no_arrows
     local total_slots = arrows_active and (num_tabs + 2) or num_tabs
     local widths      = M.getTabWidths(total_slots, usable_w)
 
     logger.dbg("weui tz: registerTouchZones on=", tostring(fm_self and fm_self.name),
         "navpager=", tostring(navpager),
+        "force_no_arrows=", tostring(force_no_arrows),
         "num_tabs=", tostring(num_tabs))
 
     -- Unregister all possible zone ids from any previous registration.
@@ -1211,18 +1220,15 @@ function M.registerTouchZones(plugin, fm_self)
     fm_self:registerTouchZones(zones)
 
     -- When fm_self is an injected widget (homescreen, collections…) the zones
-    -- live on that widget and are consulted while it is on top.  But the FM
-    -- underneath also needs the zones so they are active when the FM is the
-    -- topmost fullscreen widget.  When fm_self IS the FM this is a no-op.
+    -- live on that widget and are consulted while it is on top.  The FM below
+    -- needs its own independently-built map: copying the overlay definitions
+    -- would retain handlers that capture the overlay and, for a page with
+    -- force_no_arrows, replace the FM's global Navpager edge slots with tab
+    -- slots. Recursing terminates naturally when fm_self == fm_inst.
     local fm_mod  = package.loaded["apps/filemanager/filemanager"]
     local fm_inst = fm_mod and fm_mod.instance
     if fm_inst and fm_inst ~= fm_self and fm_inst.registerTouchZones then
-        -- Pass a shallow copy so each widget holds an independent reference.
-        -- Both tables point at the same zone-definition sub-tables (handlers,
-        -- screen_zone), which is intentional — only the outer list is copied.
-        local zones_copy = {}
-        for i = 1, #zones do zones_copy[i] = zones[i] end
-        fm_inst:registerTouchZones(zones_copy)
+        M.registerTouchZones(plugin, fm_inst)
     end
 end
 
@@ -1244,12 +1250,27 @@ function M.onTabTap(plugin, action_id, fm_self)
     -- Load tabs once — navigate reuses this table instead of reloading.
     local tabs = Config.loadTabConfig()
 
-    -- Track whether this tab was already active before the tap.
-    local already_active = (plugin.active_action == action_id)
+    -- Track whether this tab was already active before the tap. Keep the true
+    -- origin alive until the action's synchronous fullscreen show consumes it;
+    -- otherwise an async-in-place browser such as Z-Library would record
+    -- itself as _navbar_prev_action and remain highlighted after normal close.
+    local previous_action = plugin.active_action
+    local already_active = (previous_action == action_id)
 
     -- For browse actions (authors/series/tags), the indicator tab may differ
     -- from the action_id itself (own tab if present, else Library).
     local indicator_tab = _resolveActiveTab(action_id, tabs)
+    if not already_active and previous_action and previous_action ~= indicator_tab then
+        local pending_token = {}
+        plugin._navbar_prev_action_pending = previous_action
+        plugin._navbar_prev_action_pending_token = pending_token
+        UIManager:scheduleIn(0, function()
+            if plugin._navbar_prev_action_pending_token == pending_token then
+                plugin._navbar_prev_action_pending = nil
+                plugin._navbar_prev_action_pending_token = nil
+            end
+        end)
+    end
     plugin.active_action = indicator_tab
     -- Skip the eager replaceBar when the homescreen is open: navigate() will
     -- close the HS and call replaceBar+setDirty itself, so doing it here too
@@ -1369,24 +1390,94 @@ local function _executeInPlace(action_id, plugin, fm)
     UIManager:setDirty(hs_inst or fm, "ui")
 end
 
+local function _closeFullPageGroup(fm_self, underlying)
+    local full_page_group = fm_self and fm_self._weui_full_page_group
+    if not (fm_self and (fm_self._weread_full_page or full_page_group)) then
+        return false
+    end
+    local UI = require("weui_core")
+    local to_close = {}
+    local origin_prev_action
+    local stack = UI.getWindowStack()
+    for i = #stack, 1, -1 do
+        local w = stack[i] and stack[i].widget
+        if w == underlying then break end
+        local same_group = full_page_group
+            and w and w._weui_full_page_group == full_page_group
+        if w and (same_group or (not full_page_group and w._weread_full_page)) then
+            to_close[#to_close + 1] = w
+            -- The loop walks top-to-bottom, so the last value retained is
+            -- from the oldest page in the group: the real screen that was
+            -- active before the companion browser opened.
+            origin_prev_action = w._navbar_prev_action
+        end
+    end
+    if #to_close == 0 then
+        to_close[1] = fm_self
+        origin_prev_action = fm_self._navbar_prev_action
+    end
+    for _, w in ipairs(to_close) do
+        w._navbar_closing_intentionally = true
+        local cb = w.close_callback
+        w.close_callback = nil
+        UIManager:close(w)
+        w.close_callback = cb
+        w._navbar_closing_intentionally = nil
+    end
+    return true, origin_prev_action
+end
+
 function M.navigate(plugin, action_id, fm_self, tabs, force)
+    local fm = plugin.ui
+    local RUI = package.loaded["apps/reader/readerui"]
+    local readerui = RUI and RUI.instance
+    local is_group_over_reader = readerui and fm_self
+        and (fm_self._weui_full_page_group or fm_self._weread_full_page)
+
+    -- A third-party full-page browser may have been opened from ReaderUI.
+    -- Global navigation must first remove that browser and then leave the
+    -- reader; otherwise the FM action happens invisibly below ReaderUI, or the
+    -- new Homescreen is left underneath the companion page.
+    if is_group_over_reader then
+        local ok_p, Patches = pcall(require, "weui_patches")
+        if ok_p and Patches then
+            local ok_close, _, origin_prev_action =
+                pcall(_closeFullPageGroup, fm_self, readerui)
+            if ok_close then
+                -- Intentional group closes skip the normal restore callback.
+                -- Put the Reader plugin back on its pre-Z-Library logical
+                -- action before the reader-to-Homescreen path captures it.
+                plugin.active_action = origin_prev_action
+            end
+            if action_id == "homescreen" then
+                Patches.closeReaderToHomescreen(plugin, false, true)
+            elseif action_id == "home" then
+                Patches.closeReaderToLibrary(plugin)
+            else
+                Patches.closeReaderToLibrary(plugin, function(live_fm)
+                    local live_plugin = live_fm and live_fm._weui_plugin or plugin
+                    M.navigate(live_plugin, action_id, live_fm, tabs, force)
+                end)
+            end
+            return
+        end
+    end
+
     -- When the HS tab is tapped from inside the reader, route through
     -- closeReaderToHomescreen so onClose(false) suppresses the reader's
     -- internal "full" refresh — same flash-free path as the gesture handler.
     -- via_gesture=false: a tab tap is not a gesture, so "gesture_only" notice
     -- mode must not fire for this path.
     if action_id == "homescreen" then
-        local RUI = package.loaded["apps/reader/readerui"]
-        if RUI and RUI.instance then
+        if readerui then
             local ok_p, Patches = pcall(require, "weui_patches")
             if ok_p and Patches then
-                Patches.closeReaderToHomescreen(plugin, false)
+                Patches.closeReaderToHomescreen(plugin, false, true)
                 return
             end
         end
     end
 
-    local fm = plugin.ui
     -- "force" doubles as the already_active flag passed from onTabTap.
     local already_active = force
 
@@ -1479,6 +1570,7 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
         -- duplicate log entries and a redundant restore pass.
         local saved_cb = fm_self.close_callback
         fm_self.close_callback = nil
+        local group_closed, group_origin_prev
         pcall(function()
             -- WeRead full-page menus are multi-level Menu stacks
             -- (e.g. main menu → bookshelf → book detail).
@@ -1486,41 +1578,30 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
             -- the widget.  For tab navigation, the user expects to leave
             -- WeRead entirely, so we must close EVERY full-page WeRead menu
             -- in the stack, not just the top-most one.
-            if fm_self._weread_full_page then
-                local UI = require("weui_core")
-                local to_close = {}
-                local stack = UI.getWindowStack()
-                for i = #stack, 1, -1 do
-                    local w = stack[i] and stack[i].widget
-                    if w == fm then break end
-                    if w and w._weread_full_page then
-                        to_close[#to_close + 1] = w
-                    end
-                end
-
-                -- A detached or already-mutated stack should still close the
-                -- widget that originated the tab tap.
-                if #to_close == 0 then
-                    to_close[1] = fm_self
-                end
-
-                for _, w in ipairs(to_close) do
-                    w._navbar_closing_intentionally = true
-                    local cb = w.close_callback
-                    w.close_callback = nil
-                    UIManager:close(w)
-                    w.close_callback = cb
-                    w._navbar_closing_intentionally = nil
-                end
-            elseif fm_self.onCloseAllMenus then
+            group_closed, group_origin_prev = _closeFullPageGroup(fm_self, fm)
+            if not group_closed and fm_self.onCloseAllMenus then
                 fm_self:onCloseAllMenus()
-            elseif fm_self.onClose then
+            elseif not (fm_self._weui_full_page_group or fm_self._weread_full_page)
+                    and fm_self.onClose then
                 fm_self:onClose()
             end
         end)
         fm_self.close_callback = saved_cb
         fm_self._navbar_closing_intentionally = nil
         fm._navbar_tab_nav_in_progress = nil
+        if group_closed and plugin._navbar_prev_action_pending ~= nil then
+            -- onTabTap captured the currently-highlighted companion group
+            -- ("zlibrary"/"weread") before navigate() removed that entire
+            -- stack. A newly-opened fullscreen destination must remember the
+            -- true pre-group origin instead, or closing it would restore a
+            -- tab whose page no longer exists.
+            plugin._navbar_prev_action_pending = group_origin_prev
+        end
+        -- registerTouchZones(widget) mirrors the injected widget's zones onto
+        -- the FM.  A non-pageable third-party page deliberately uses plain tab
+        -- slots even in global Navpager mode, so restore the FM's own arrow
+        -- slots as soon as that page is left.
+        if plugin._registerTouchZones then plugin:_registerTouchZones(fm) end
     end
 
     if fm_self ~= fm and fm._navbar_container then
@@ -1563,7 +1644,8 @@ function M.rebuildAllNavbars(plugin)
     local function rebuildWidget(w)
         if not w or not w._navbar_container or seen[w] then return end
         seen[w] = true
-        M.replaceBar(w, M.buildBarWidget(plugin.active_action, tabs, num_tabs, mode), tabs)
+        M.replaceBar(w, M.buildBarWidget(
+            plugin.active_action, tabs, num_tabs, mode, w._navbar_force_no_arrows), tabs)
         if new_topbar then
             UI.replaceTopbar(w, new_topbar)
         end
@@ -1591,7 +1673,8 @@ function M.setTempTabActive(plugin, action_id, active, prev_action)
     local function updateWidget(w)
         if not w or not w._navbar_container or seen[w] then return end
         seen[w] = true
-        M.replaceBar(w, M.buildBarWidget(show_id, tabs, nil, mode), tabs)
+        M.replaceBar(w,
+            M.buildBarWidget(show_id, tabs, nil, mode, w._navbar_force_no_arrows), tabs)
         -- setDirty(w) covers the full screen and recurses into navbar_container
         -- (see the identical note in onTabTap). Dirtying just the sub-container
         -- was the previous approach here and is unreliable once a dialog is
@@ -1630,7 +1713,8 @@ function M.rewrapAllWidgets(plugin)
         -- We apply the returned topbar directly via applyNavbarState — no
         -- second buildTopbarWidget() call needed.
         local new_container, wrapped, bar, topbar, bar_idx, topbar_on2, topbar_idx =
-            UI.wrapWithNavbar(inner, plugin.active_action or tabs[1] or "home", tabs)
+            UI.wrapWithNavbar(inner, plugin.active_action or tabs[1] or "home", tabs,
+                w._navbar_force_no_arrows)
         UI.applyNavbarState(w, new_container, bar, topbar, bar_idx, topbar_on2, topbar_idx, tabs)
         w[1] = wrapped
 
@@ -1679,6 +1763,14 @@ function M.rewrapAllWidgets(plugin)
             end
         end
 
+        -- Third-party adapters may own additional nested layout state that
+        -- the generic dimen update above cannot discover.  Let the descriptor
+        -- resize it after rotation or bar/topbar customisation changes.
+        local bi_desc = w._weui_bi_desc
+        if bi_desc and type(bi_desc.on_rewrap) == "function" then
+            pcall(bi_desc.on_rewrap, w, { plugin = plugin, tabs = tabs })
+        end
+
             local ok_p, Patches = pcall(require, "weui_patches")
             if ok_p and Patches and Patches.injectWallpaperIntoFullscreenWidget then
                 pcall(Patches.injectWallpaperIntoFullscreenWidget, w)
@@ -1698,27 +1790,69 @@ function M.rewrapAllWidgets(plugin)
     end
 end
 
-function M.restoreTabInFM(plugin, tabs, prev_action)
+function M.restoreTabInFM(plugin, tabs, prev_action, closing_widget)
     local fm = plugin.ui
-    if not (fm and fm._navbar_container) then return end
-    local should_skip = false
+    if not (fm and fm._navbar_container) then
+        -- ReaderUI does not own a bottom bar, but Z-Library may be opened on
+        -- top of it. Restore the logical action even though there is no
+        -- visible FM bar to rebuild; otherwise the stale "zlibrary" state is
+        -- carried into the next Homescreen/FileManager instance.
+        plugin.active_action = prev_action
+        return
+    end
     local UI = require("weui_core")
-    pcall(function()
-        for _i, entry in ipairs(UI.getWindowStack()) do
-            if entry.widget and entry.widget._navbar_injected and entry.widget ~= fm then
-                should_skip = true; return
-            end
-        end
-    end)
-    if should_skip then return end
     -- Always load tabs fresh: the `tabs` argument was captured at widget-open time
     -- and may be stale if the user changed tab config while the widget was open.
     local t = Config.loadTabConfig()
+    local tab_set = {}
+    for _, id in ipairs(t) do tab_set[id] = true end
+
+    -- close() invokes this before removing closing_widget from UIManager's
+    -- stack. Resolve the screen that will actually be exposed next and update
+    -- its own bar. In particular, an async-in-place Z-Library page may sit on
+    -- top of Homescreen; blindly skipping because another injected widget is
+    -- present would leave Z-Library highlighted after its native Close button.
+    local underlying
+    local stack = UI.getWindowStack()
+    for i = #stack, 1, -1 do
+        local w = stack[i] and stack[i].widget
+        if w and w ~= closing_widget and w ~= fm and w._navbar_injected then
+            underlying = w
+            break
+        end
+    end
+    if underlying then
+        local restored
+        if underlying.name == "homescreen" and tab_set.homescreen then
+            restored = "homescreen"
+        elseif underlying._weui_full_page_group
+                and tab_set[underlying._weui_full_page_group] then
+            restored = underlying._weui_full_page_group
+        elseif underlying._weui_bi_desc
+                and tab_set[underlying._weui_bi_desc.active_action_id] then
+            restored = underlying._weui_bi_desc.active_action_id
+        elseif prev_action and tab_set[prev_action] then
+            restored = prev_action
+        end
+        if restored then
+            plugin.active_action = restored
+            M.replaceBar(underlying, M.buildBarWidget(
+                restored, t, nil, nil, underlying._navbar_force_no_arrows), t)
+            UIManager:setDirty(underlying, "ui")
+        end
+        return
+    end
+
     local Patches = require("weui_patches")
-    local restored = (fm.file_chooser and Patches._resolveTabForPath(fm.file_chooser.path, t))
-                  or prev_action or (t[1])
+    -- A captured origin is more authoritative than the FM's current path for
+    -- non-path screens (Homescreen, companion browsers, collections). Fall
+    -- back to path resolution only if that tab no longer exists.
+    local restored = (prev_action and tab_set[prev_action] and prev_action)
+                  or (fm.file_chooser and Patches._resolveTabForPath(fm.file_chooser.path, t))
+                  or t[1]
     plugin.active_action = restored
     M.replaceBar(fm, M.buildBarWidget(restored, t), t)
+    if plugin._registerTouchZones then plugin:_registerTouchZones(fm) end
     UIManager:setDirty(fm, "ui")
 end
 

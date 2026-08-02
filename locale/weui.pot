@@ -15,9 +15,7 @@ msgid "We UI"
 msgstr ""
 
 #: _meta.lua:6
-msgid ""
-"A We UI for KOReader with integrated WeRead bookshelf, search, download, and "
-"reading support."
+msgid "A We UI for KOReader with WeRead, private books, and optional Z-Library acquisition with a dedicated proxy."
 msgstr ""
 
 #: main.lua:129 weui_config.lua:151 weui_weread.lua:333 weui_weread.lua:347
@@ -4526,4 +4524,221 @@ msgstr ""
 
 #: weui_window.lua:2617
 msgid "Move down"
+msgstr ""
+
+#: weui_quickactions.lua weui_menu.lua weui_config.lua
+msgid "Z-Library"
+msgstr ""
+
+#: weui_quickactions.lua
+msgid "Z-Library plugin is not installed or enabled."
+msgstr ""
+
+#: weui_quickactions.lua
+msgid "Z-Library could not be opened."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "HTTP CONNECT"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "SOCKS5"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Set a proxy server first."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy address is invalid."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Use http:// or socks5:// for the proxy address."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy host is invalid."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy port must be between 1 and 65535."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Enter proxy credentials in the separate username and password fields."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy address must not contain a path, query, or fragment."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy username and password must each be at most 255 bytes."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Invalid configuration"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "No Z-Library server address is available."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "No HTTP response received."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "The value is invalid."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Z-Library proxy server"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid ""
+"HTTP CONNECT: http://host:port\n"
+"SOCKS5 with remote DNS: socks5://host:port"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy address cannot be empty."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy username"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Optional"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Leave empty when the proxy does not require authentication."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy username is too long."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy password"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Enter a replacement, or leave empty to clear"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "The password is stored in plain text in the local We UI settings file. It is never shown in menus or logs."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy password is too long."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Testing Z-Library proxy…"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+#, lua-format
+msgid ""
+"Proxy test succeeded.\n"
+"\n"
+"%s\n"
+"HTTP status: %d\n"
+"Time: %d ms"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+#, lua-format
+msgid ""
+"Proxy test failed. No direct connection was attempted.\n"
+"\n"
+"%s"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Unknown error"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Clear the Z-Library proxy server and credentials?"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Z-Library proxy settings cleared."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Use proxy for all Z-Library traffic"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Z-Library proxy disabled."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Z-Library proxy enabled. If the proxy fails, Z-Library will not connect directly."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy server"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Not set"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Test proxy connection"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy behavior and Kindle tips"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid ""
+"Only Z-Library traffic uses this proxy, including login, search, covers, book downloads, mirror discovery, favorites, and Z-Library updates.\n"
+"\n"
+"HTTP proxies use CONNECT for HTTPS. SOCKS5 sends target hostnames to the proxy for remote DNS resolution. A proxy failure always blocks the request; there is no direct fallback. Use only a proxy server you trust.\n"
+"\n"
+"127.0.0.1 means the Kindle itself. For a proxy running on a computer, phone, or router, enter its LAN IP and allow LAN connections. Using a proxy IP also avoids a local DNS lookup for the proxy server."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Clear proxy settings"
+msgstr ""
+
+#: weui_menu.lua
+msgid "Z-Library Proxy"
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Proxy authentication failed. Check the username and password."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "Could not connect to the proxy server. Check its address, port, and LAN access."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy connection timed out."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy refused the connection to Z-Library."
+msgstr ""
+
+#: weui_zlibrary_proxy.lua
+msgid "The proxy tunnel was created, but the TLS connection to Z-Library failed."
+msgstr ""
+
+#: main.lua weui_quickactions.lua
+msgid "Z-Library proxy protection could not be installed. Network access was blocked to prevent a direct connection."
 msgstr ""

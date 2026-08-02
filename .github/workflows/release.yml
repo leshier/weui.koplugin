@@ -43,9 +43,11 @@ jobs:
           rsync -a \
             --exclude='.git' \
             --exclude='.github' \
+            --exclude='dist' \
             --exclude='stage' \
             --exclude='.gitignore' \
             --exclude='.DS_Store' \
+            --exclude='.runtime-visual.koplugin' \
             --exclude='scripts' \
             --exclude='*.swp' \
             --exclude='*~' \
@@ -57,6 +59,28 @@ jobs:
           echo "::endgroup::"
           ls -la stage/weui.koplugin.zip
 
+      - name: Package optional WeUI + Z-Library bundle
+        run: |
+          set -e
+          ZLIBRARY_TAG="v1.0.43-302bed328645593fe1f67d626b7b577b9ff39999"
+          curl -fL --retry 3 \
+            "https://github.com/ZlibraryKO/zlibrary.koplugin/archive/refs/tags/${ZLIBRARY_TAG}.tar.gz" \
+            -o stage/zlibrary.tar.gz
+          mkdir -p stage/zlibrary-src stage/combined
+          tar -xzf stage/zlibrary.tar.gz -C stage/zlibrary-src --strip-components=1
+          cp -a stage/weui.koplugin stage/combined/weui.koplugin
+          mkdir -p stage/combined/zlibrary.koplugin
+          rsync -a \
+            --exclude='.git*' \
+            --exclude='.github' \
+            --exclude='.editorconfig' \
+            --exclude='test' \
+            --exclude='assets' \
+            stage/zlibrary-src/ stage/combined/zlibrary.koplugin/
+          ( cd stage/combined && zip -rq ../weui-with-zlibrary.koplugins.zip \
+              weui.koplugin zlibrary.koplugin )
+          test -f stage/combined/zlibrary.koplugin/LICENSE
+
       - name: Create release and upload asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -66,9 +90,11 @@ jobs:
           echo "Publishing release for tag $TAG"
           # Idempotent: create the release if missing, otherwise just (re)upload the asset.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" stage/weui.koplugin.zip --clobber
+            gh release upload "$TAG" stage/weui.koplugin.zip \
+              stage/weui-with-zlibrary.koplugins.zip --clobber
           else
             gh release create "$TAG" stage/weui.koplugin.zip \
+              stage/weui-with-zlibrary.koplugins.zip \
               --title "$TAG" \
               --generate-notes \
               --verify-tag

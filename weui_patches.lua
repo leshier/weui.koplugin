@@ -876,7 +876,8 @@ function M.patchFileManagerClass(plugin)
             local target0 = M._getNavbarTarget and M._getNavbarTarget(liveFM()) or liveFM()
             if target0 then
                 Bottombar.replaceBar(target0,
-                    Bottombar.buildBarWidgetWithKeyFocus(plugin.active_action, tabs, _navbar_kb_idx),
+                    Bottombar.buildBarWidgetWithKeyFocus(plugin.active_action, tabs, _navbar_kb_idx,
+                        nil, nil, target0._navbar_force_no_arrows),
                     tabs)
                 UIManager:setDirty(target0, "ui")
             end
@@ -896,7 +897,8 @@ function M.patchFileManagerClass(plugin)
                 local target2 = M._getNavbarTarget and M._getNavbarTarget(liveFM()) or liveFM()
                 if target2 then
                     Bottombar.replaceBar(target2,
-                        Bottombar.buildBarWidgetWithKeyFocus(plugin.active_action, t2, _navbar_kb_idx),
+                        Bottombar.buildBarWidgetWithKeyFocus(plugin.active_action, t2, _navbar_kb_idx,
+                            nil, nil, target2._navbar_force_no_arrows),
                         t2)
                     UIManager:setDirty(target2, "ui")
                 end
@@ -910,7 +912,8 @@ function M.patchFileManagerClass(plugin)
                 local target2 = M._getNavbarTarget and M._getNavbarTarget(fm2) or fm2
                 if target2 then
                     local t2 = Config.loadTabConfig()
-                    Bottombar.replaceBar(target2, Bottombar.buildBarWidget(plugin.active_action, t2), t2)
+                    Bottombar.replaceBar(target2, Bottombar.buildBarWidget(
+                        plugin.active_action, t2, nil, nil, target2._navbar_force_no_arrows), t2)
                     UIManager:setDirty(target2, "ui")
                 end
                 -- Call the return callback, or restore focus to the file chooser.
@@ -1833,7 +1836,18 @@ function M.patchUIManagerShow(plugin)
             end
         end
 
-        -- Fast path: non-fullscreen widgets need no WeUI logic.
+        -- Bar Injection descriptors may opt a third-party fullscreen widget
+        -- into WeUI even when that widget does not set KOReader's
+        -- covers_fullscreen flag itself (Z-Library's browser is one such
+        -- widget).  Match before the fast path and promote only registered
+        -- widgets; ordinary dialogs remain untouched.
+        local _pre_bi_desc = widget and UI.BarInjection.matchWidget(widget) or nil
+        if _pre_bi_desc and not widget.covers_fullscreen then
+            widget.covers_fullscreen = true
+            widget._weui_bi_forced_fullscreen = true
+        end
+
+        -- Fast path: non-fullscreen, non-registered widgets need no WeUI logic.
         if not (widget and widget.covers_fullscreen) then
             return orig_show(um_self, widget, ...)
         end
@@ -1920,7 +1934,7 @@ function M.patchUIManagerShow(plugin)
 
         -- Decide whether to inject the navbar into this widget.
         -- Check the Bar Injection API registry first (O(n) over a tiny list).
-        local _bi_desc = UI.BarInjection.matchWidget(widget)
+        local _bi_desc = _pre_bi_desc or UI.BarInjection.matchWidget(widget)
 
         local should_inject = _show_depth == 1
             and widget
@@ -1970,6 +1984,7 @@ function M.patchUIManagerShow(plugin)
         -- records the tab that was active before the tap, not the one opened.
         local action_before = plugin._navbar_prev_action_pending or plugin.active_action
         plugin._navbar_prev_action_pending = nil
+        plugin._navbar_prev_action_pending_token = nil
         local effective_action = nil
 
         -- Activate the tab that matches this widget.
@@ -2015,6 +2030,7 @@ function M.patchUIManagerShow(plugin)
         local navbar_container, wrapped, bar, topbar, bar_idx, topbar_on, topbar_idx =
             UI.wrapWithNavbar(widget._navbar_inner, display_action, tabs, not widget_is_pageable)
         UI.applyNavbarState(widget, navbar_container, bar, topbar, bar_idx, topbar_on, topbar_idx, tabs)
+        widget._navbar_force_no_arrows = not widget_is_pageable
         widget._navbar_prev_action = action_before
         widget[1]                  = wrapped
 
@@ -2204,7 +2220,9 @@ function M.patchUIManagerShow(plugin)
         -- Schedule a navpager arrow update for the next event-loop tick.
         -- Snapshot has_prev/has_next now to avoid races with a second
         -- updatePageInfo call that may fire during the same tick.
-        if SUISettings:isTrue("weui_bar_navpager_enabled") and not _navpager_rebuild_pending then
+        if SUISettings:isTrue("weui_bar_navpager_enabled")
+                and widget_is_pageable
+                and not _navpager_rebuild_pending then
             local has_prev_snap, has_next_snap = Config.getNavpagerState()
             _navpager_rebuild_pending = true
             UIManager:scheduleIn(0, function()
@@ -2234,7 +2252,7 @@ function M.patchUIManagerShow(plugin)
         -- Exclude widgets that claim covers_fullscreen but are mere popups with no
         -- title_bar and no name (e.g. VocabBuilder's MenuDialog).
         if _show_depth == 0 and widget and widget.covers_fullscreen
-                and (widget.title_bar or widget.name)
+                and (widget.title_bar or widget.name or widget._weui_bi_desc)
                 and widget.name ~= "homescreen"
                 and widget ~= plugin.ui
                 and not widget._weui_keep_homescreen then
@@ -2381,13 +2399,16 @@ function M.patchUIManagerClose(plugin)
                     UIManager:setDirty(fm, "ui")
                 end
             else
-                active_plugin:_restoreTabInFM(nil, widget._navbar_prev_action)
+                active_plugin:_restoreTabInFM(nil, widget._navbar_prev_action, widget)
             end
 
             -- Restore _fm_path_base from the FM's current folder so the
             -- breadcrumb reappears in the subtitle after the overlay closes.
             local fm_r = liveFM()
             if fm_r then
+                if active_plugin._registerTouchZones then
+                    active_plugin:_registerTouchZones(fm_r)
+                end
                 local fc_r = fm_r.file_chooser
                 if fc_r and fc_r.path then
                     pcall(function() fm_r:updateTitleBarPath(fc_r.path, false) end)
@@ -2476,7 +2497,7 @@ function M.patchUIManagerClose(plugin)
         -- for any path not covered above (e.g. a third-party plugin closing the reader).
         if isStartWithHS()
                 and widget.covers_fullscreen
-                and (widget.title_bar or widget.name)
+                and (widget.title_bar or widget.name or widget._weui_bi_desc)
                 and widget.name ~= "homescreen"
                 and not widget_is_fm
                 and not widget._navbar_closing_intentionally
@@ -2828,6 +2849,8 @@ function M.patchMenuForNavpager(plugin)
             local plugin = _live_plugin or plugin
             local fm = plugin.ui
             if not (fm and fm._navbar_container) then return end
+            local target = _getNavbarTarget(fm)
+            if target and target._navbar_force_no_arrows then return end
             -- Re-read page state from the live widget at execution time.
             -- This is the same source of truth the native bar uses and guarantees
             -- correctness regardless of when updatePageInfo was called relative
@@ -2837,7 +2860,6 @@ function M.patchMenuForNavpager(plugin)
             local live_page_num = menu_self.page_num or 0
             local has_prev = live_page > 1
             local has_next = live_page < live_page_num
-            local target = _getNavbarTarget(fm)
             if not Bottombar.updateNavpagerArrows(target, has_prev, has_next) then
                 local tabs    = Config.loadTabConfig()
                 local mode    = Config.getNavbarMode()
@@ -3506,9 +3528,10 @@ end
 -- Sets all pre-close flags before the actual onClose call.
 -- Returns: file, return_to_folder, prev_action
 -- ---------------------------------------------------------------------------
-local function _prepareReaderClose(plugin, readerui, via_gesture)
+local function _prepareReaderClose(plugin, readerui, via_gesture, force_homescreen)
     local file = readerui.document and readerui.document.file
-    local return_to_folder = SUISettings:isTrue("weui_hs_return_to_book_folder")
+    local return_to_folder = not force_homescreen
+        and SUISettings:isTrue("weui_hs_return_to_book_folder")
     local fm_pre = liveFM()
 
     -- lazy_refresh defers FM file-list scan until HS closes (I/O optimisation).
@@ -3585,14 +3608,14 @@ end
 -- Safe for gestures because no forceRePaint() follows the gesture callback.
 -- For the TouchMenu path, wireReaderMenuFMTab calls _closeReaderToHomescreenSync
 -- directly (synchronous) to match native KOReader's single-repaint behaviour.
-function M.closeReaderToHomescreen(plugin, via_gesture)
+function M.closeReaderToHomescreen(plugin, via_gesture, force_homescreen)
     if via_gesture == nil then via_gesture = true end
     local RUI = package.loaded["apps/reader/readerui"]
     if not (RUI and RUI.instance) then return end
     local readerui = RUI.instance
 
     local file, return_to_folder, prev_action =
-        _prepareReaderClose(plugin, readerui, via_gesture)
+        _prepareReaderClose(plugin, readerui, via_gesture, force_homescreen)
 
     -- -----------------------------------------------------------------------
     -- Flash elimination (#35 equivalent).
@@ -3831,7 +3854,7 @@ end
 -- Homescreen appearing on top — equivalent to the user closing the reader
 -- when "return to book folder" / "Start with Homescreen" are both off.
 -- Safe to call when the reader is NOT open (no-op in that case).
-function M.closeReaderToLibrary(plugin)
+function M.closeReaderToLibrary(plugin, after_close)
     local RUI = package.loaded["apps/reader/readerui"]
     if not (RUI and RUI.instance) then return end
     local readerui = RUI.instance
@@ -3870,8 +3893,16 @@ function M.closeReaderToLibrary(plugin)
         end
         local tabs = Config.loadTabConfig()
         plugin.active_action = "home"
+        local live_plugin = fm_ref._weui_plugin or plugin
+        live_plugin.active_action = "home"
         Bottombar.replaceBar(fm_ref, Bottombar.buildBarWidget("home", tabs), tabs)
         UIManager:setDirty(fm_ref, "ui")
+        if type(after_close) == "function" then
+            local ok_cb, cb_err = pcall(after_close, fm_ref)
+            if not ok_cb then
+                logger.warn("weui: post-reader navigation failed:", tostring(cb_err))
+            end
+        end
     end)
 end
 

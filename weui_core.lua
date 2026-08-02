@@ -283,7 +283,7 @@ function M.wrapWithNavbar(inner_widget, active_action_id, tabs, force_no_arrows)
 
     local bar
     if navbar_on then
-        bar = Bottombar.buildBarWidget(active_action_id, tabs)
+        bar = Bottombar.buildBarWidget(active_action_id, tabs, nil, nil, force_no_arrows)
     end
     -- Build topbar only once — wrapWithNavbar is the single point of construction.
     -- Callers must NOT call buildTopbarWidget() again after wrapWithNavbar returns.
@@ -776,6 +776,7 @@ local function _validateBI(desc)
     if desc.get_active_action ~= nil and type(desc.get_active_action) ~= "function" then return "descriptor.get_active_action must be a function when provided" end
     if desc.is_pageable ~= nil and type(desc.is_pageable) ~= "boolean" and type(desc.is_pageable) ~= "function" then return "descriptor.is_pageable must be boolean or nil" end
     if desc.on_inject ~= nil and type(desc.on_inject) ~= "function" then return "descriptor.on_inject must be a function when provided" end
+    if desc.on_rewrap ~= nil and type(desc.on_rewrap) ~= "function" then return "descriptor.on_rewrap must be a function when provided" end
     if desc.on_close ~= nil and type(desc.on_close) ~= "function" then return "descriptor.on_close must be a function when provided" end
     return nil
 end

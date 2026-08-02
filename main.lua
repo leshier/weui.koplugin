@@ -160,6 +160,7 @@ function WeUIPlugin:_initWeReadModule()
 end
 
 function WeUIPlugin:init()
+    self._weui_tearing_down = nil
     local ok, err = pcall(function()
         -- -------------------------------------------------------------------
         -- One-shot rename migration: legacy (simpleui / lershierui) -> weui.
@@ -1031,6 +1032,91 @@ function WeUIPlugin:init()
             SUISettings:set("weui_settings_migrated_v9_weread_between_home_history", true)
             SUISettings:flush()
         end
+        -- v1.3 restores the classic v1.2 navigation when upgrading from the
+        -- short-lived portal prototype. Its stock four-tab bar is restored
+        -- exactly; customized bars only lose the two retired portal entries.
+        if not SUISettings:isTrue("weui_settings_migrated_v10_restore_classic_ui") then
+            pcall(function()
+                local tabs = SUISettings:get("weui_bar_tabs")
+                local has_portal_tab = false
+                if type(tabs) == "table" then
+                    for _, id in ipairs(tabs) do
+                        if id == "weui_acquire" or id == "weui_profile" then
+                            has_portal_tab = true
+                            break
+                        end
+                    end
+                end
+                if has_portal_tab then
+                    local restored = {}
+                    local seen_portal_default = {}
+                    for _, id in ipairs(tabs) do seen_portal_default[id] = true end
+                    local is_portal_default = (#tabs == 4
+                        and tabs[1] == "homescreen"
+                        and tabs[2] == "home"
+                        and tabs[3] == "weui_acquire"
+                        and tabs[4] == "weui_profile")
+                        or (#tabs == 5
+                            and seen_portal_default.homescreen
+                            and seen_portal_default.home
+                            and seen_portal_default.weread
+                            and seen_portal_default.weui_acquire
+                            and seen_portal_default.weui_profile)
+                    if is_portal_default then
+                        for i, id in ipairs(Config.DEFAULT_TABS) do restored[i] = id end
+                    else
+                        local seen = {}
+                        for _, id in ipairs(tabs) do
+                            if id ~= "weui_acquire" and id ~= "weui_profile"
+                                    and not seen[id] and #restored < Config.MAX_TABS then
+                                restored[#restored + 1] = id
+                                seen[id] = true
+                            end
+                        end
+                        for _, id in ipairs(Config.DEFAULT_TABS) do
+                            if #restored >= Config.MAX_TABS then break end
+                            if not seen[id] then
+                                restored[#restored + 1] = id
+                                seen[id] = true
+                            end
+                        end
+                    end
+                    SUISettings:set("weui_bar_tabs", restored)
+                    Config.invalidateTabsCache()
+                    logger.info("weui: restored classic v1.2 navigation")
+                end
+                -- The prototype actions could also be saved in any of the
+                -- homescreen quick-action rows. Current rows use persistent
+                -- instance IDs; the numeric keys cover older installations.
+                local function cleanPortalItems(key)
+                    local items = SUISettings:get(key)
+                    if type(items) == "table" then
+                        local clean, changed = {}, false
+                        for _, id in ipairs(items) do
+                            if id == "weui_acquire" or id == "weui_profile" then
+                                changed = true
+                            else
+                                clean[#clean + 1] = id
+                            end
+                        end
+                        if changed then SUISettings:set(key, clean) end
+                    end
+                end
+                for slot = 1, 3 do
+                    cleanPortalItems("weui_hs_qa_" .. slot .. "_items")
+                end
+                local row_instances = SUISettings:get("weui_qa_row_instances")
+                if type(row_instances) == "table" then
+                    for _, instance_id in ipairs(row_instances) do
+                        if type(instance_id) == "string" and instance_id ~= "" then
+                            cleanPortalItems("weui_hs_qa_" .. instance_id .. "_items")
+                        end
+                    end
+                end
+            end)
+            SUISettings:set("weui_settings_migrated_v10_restore_classic_ui", true)
+            SUISettings:flush()
+        end
         Config.migrateOldCustomSlots()
         -- Always run sanitizeQASlots: it cleans both custom QA slot references
         -- and any stale built-in IDs from navbar_tabs.  The function is cheap —
@@ -1047,6 +1133,49 @@ function WeUIPlugin:init()
             end
         end
         self.ui.menu:registerToMainMenu(self)
+        -- Register Z-Library's fullscreen browser and result lists with the
+        -- generic WeUI bar injector.  The matcher resolves companion classes
+        -- lazily, so this remains safe regardless of plugin load order.
+        self._zlibrary_ui_install_task = function()
+            self._zlibrary_ui_install_task = nil
+            if self._weui_tearing_down then return end
+            local ok_zui, ZlibraryUI = pcall(require, "weui_zlibrary_ui")
+            if ok_zui and ZlibraryUI and type(ZlibraryUI.install) == "function" then
+                local ok_install, install_err = pcall(ZlibraryUI.install)
+                if not ok_install then
+                    logger.warn("weui: failed to install Z-Library navigation adapter:", tostring(install_err))
+                end
+            end
+        end
+        UIManager:scheduleIn(0, self._zlibrary_ui_install_task)
+        -- Z-Library remains an independent companion plugin.  Install our
+        -- request wrapper after PluginLoader has finished initialising every
+        -- plugin so all of its network paths (including its own native menu)
+        -- use the same fail-closed, Z-Library-only proxy when enabled.
+        self._zlibrary_proxy_install_task = function()
+            self._zlibrary_proxy_install_task = nil
+            if self._weui_tearing_down then return end
+            local ok_proxy, Proxy = pcall(require, "weui_zlibrary_proxy")
+            if ok_proxy and Proxy and type(Proxy.install) == "function" then
+                local ok_install, installed, install_err = pcall(Proxy.install)
+                if not ok_install then
+                    logger.warn("weui: failed to install Z-Library proxy transport:", tostring(installed))
+                elseif not installed and Proxy.isEnabled and Proxy.isEnabled() then
+                    logger.warn("weui: Z-Library proxy transport unavailable:", tostring(install_err))
+                end
+                if Proxy.isEnabled and Proxy.isEnabled()
+                        and (not ok_install or not installed) then
+                    UIManager:show(InfoMessage:new{
+                        text = _("Z-Library proxy protection could not be installed. Network access was blocked to prevent a direct connection."),
+                    })
+                end
+            elseif SUISettings:isTrue("weui_zlibrary_proxy_enabled") then
+                UIManager:show(InfoMessage:new{
+                    text = _("Z-Library proxy protection could not be installed. Network access was blocked to prevent a direct connection."),
+                })
+            end
+        end
+        UIManager:scheduleIn(0, self._zlibrary_proxy_install_task)
         -- Defer WeRead module init off the cold-start critical path: its
         -- WeReadPlugin.new() opens settings + migrates data (disk I/O) and
         -- pulls in ~41 lib modules. Init 1s after startup so the homescreen
@@ -1456,6 +1585,7 @@ local _PLUGIN_MODULES = {
     "weui_patches", "weui_menu", "weui_titlebar", "weui_quickactions",
     "weui_homescreen", "weui_foldercovers", "weui_browsemeta", "weui_updater",
     "weui_store", "weui_presets", "weui_style", "weui_privacy",
+    "weui_zlibrary_proxy", "weui_zlibrary_ui",
     "weui_settings_window",
     "weui_quicksettings_bar",
     "desktop_modules/moduleregistry",
@@ -1564,6 +1694,7 @@ function WeUIPlugin:onCloseWidget()
 end
 
 function WeUIPlugin:onTeardown()
+    self._weui_tearing_down = true
     -- Flush the plugin settings store so any in-memory writes are persisted
     -- before the plugin is unloaded or KOReader exits.
     SUISettings:flush()
@@ -1571,8 +1702,33 @@ function WeUIPlugin:onTeardown()
         UIManager:unschedule(self._topbar_timer)
         self._topbar_timer = nil
     end
+    if self._zlibrary_ui_install_task then
+        UIManager:unschedule(self._zlibrary_ui_install_task)
+        self._zlibrary_ui_install_task = nil
+    end
+    if self._zlibrary_proxy_install_task then
+        UIManager:unschedule(self._zlibrary_proxy_install_task)
+        self._zlibrary_proxy_install_task = nil
+    end
+    -- Close adapter-owned pages while the UIManager close wrapper is still
+    -- installed. This unwraps their bar tree and removes companion tracking;
+    -- leaving them alive past teardown would strand WeUI touch zones on a
+    -- third-party widget after the plugin has been disabled.
+    local mod_zlibrary_ui = package.loaded["weui_zlibrary_ui"]
+    if mod_zlibrary_ui then
+        if type(mod_zlibrary_ui.closeOpenPages) == "function" then
+            pcall(mod_zlibrary_ui.closeOpenPages)
+        end
+        if type(mod_zlibrary_ui.uninstall) == "function" then
+            pcall(mod_zlibrary_ui.uninstall)
+        end
+    end
     Patches.teardownAll(self)
     pcall(function() QSBar.uninstall() end)
+    local mod_zlibrary_proxy = package.loaded["weui_zlibrary_proxy"]
+    if mod_zlibrary_proxy and type(mod_zlibrary_proxy.uninstall) == "function" then
+        pcall(mod_zlibrary_proxy.uninstall)
+    end
     I18n.uninstall()
     -- Give modules with internal upvalue caches a chance to nil them before
     -- their package.loaded entry is cleared — ensures the GC can collect the
@@ -2500,8 +2656,8 @@ function WeUIPlugin:_rewrapAllWidgets()
     Bottombar.rewrapAllWidgets(self)
 end
 
-function WeUIPlugin:_restoreTabInFM(tabs, prev_action)
-    Bottombar.restoreTabInFM(self, tabs, prev_action)
+function WeUIPlugin:_restoreTabInFM(tabs, prev_action, closing_widget)
+    Bottombar.restoreTabInFM(self, tabs, prev_action, closing_widget)
 end
 
 function WeUIPlugin:_doWifiToggle()
