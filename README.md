@@ -50,8 +50,9 @@ discovery, favorites, and the companion plugin's update checks/downloads.
 - Optional HTTP Basic and SOCKS5 username/password authentication.
 - Strict failure behavior: when enabled, an invalid or unavailable proxy
   blocks the Z-Library request; it never falls back to a direct connection.
-- The setting is scoped to Z-Library. WeRead, KOReader updates, OPDS, and other
-  network features keep their existing network route.
+- The setting is scoped to Z-Library by default. WeRead, KOReader updates,
+  OPDS, and other network features keep their existing network route. We UI's
+  own package downloader can opt in separately under its update settings.
 - Proxy passwords are stored as plain text in the local We UI settings file and
   are masked in the interface and omitted from logs.
 
@@ -76,6 +77,13 @@ repository's GitHub Releases for a newer version and, when found, downloads
 - **Manual:** `Menu → … → Check for Updates`.
 - **Automatic:** enable the auto-check option in the plugin settings. It runs
   once on startup (24 h throttle) and only when the network is already online.
+
+Release downloads use a 30-second block timeout, a 180-second total timeout,
+and one automatic retry. On networks where GitHub Release assets are not
+reachable directly, enable `Use Z-Library proxy for update downloads`; every
+HTTPS redirect in the asset download remains inside the configured HTTP
+CONNECT or SOCKS5 tunnel. Version checks and all other KOReader traffic keep
+their original route.
 
 The installed version is read from `_meta.lua`; releases are tagged `vX.Y.Z`.
 

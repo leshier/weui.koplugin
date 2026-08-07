@@ -36,6 +36,17 @@ local GS_HAS_UPDATE = "weui_upd_has_update"  -- boolean
 local GS_LATEST_VER = "weui_upd_latest_ver"  -- string without "v"
 local GS_DL_URL     = "weui_upd_dl_url"      -- string URL
 local GS_CUSTOM_API = "weui_upd_custom_api"  -- string custom API URL
+local GS_USE_ZLIB_PROXY = "weui_upd_use_zlibrary_proxy" -- boolean
+
+-- GitHub Release assets are noticeably less reliable than the lightweight
+-- version probe on some networks.  KOReader's generic file limits (15/60 s)
+-- are a little aggressive for a Kindle on a slow route, so updater downloads
+-- get their own limits and one clean retry.  These values remain bounded so a
+-- dead route can still be cancelled instead of hanging indefinitely.
+local DOWNLOAD_BLOCK_TIMEOUT = 30
+local DOWNLOAD_TOTAL_TIMEOUT = 180
+local DOWNLOAD_ATTEMPTS = 2
+local MAX_DOWNLOAD_REDIRECTS = 8
 
 local _DEFAULT_API_URL = string.format(
     "https://api.github.com/repos/%s/%s/releases/latest",
@@ -231,44 +242,121 @@ local function _httpGetToFile(url, dest_path)
     local ltn12  = require("ltn12")
     local socket = require("socket")
 
-    local fh, err_open = io.open(dest_path, "wb")
-    if not fh then return nil, "cannot create file: " .. tostring(err_open) end
+    local gs = _gs()
+    local use_proxy = gs and gs:readSetting(GS_USE_ZLIB_PROXY) == true
 
-    if ok_su then
-        socketutil:set_timeout(
-            socketutil.FILE_BLOCK_TIMEOUT,
-            socketutil.FILE_TOTAL_TIMEOUT
+    local function requestOnce(request_url, follow_redirects)
+        local fh, err_open = io.open(dest_path, "wb")
+        if not fh then return nil, nil, "cannot create file: " .. tostring(err_open) end
+
+        if ok_su then
+            socketutil:set_timeout(DOWNLOAD_BLOCK_TIMEOUT, DOWNLOAD_TOTAL_TIMEOUT)
+        end
+
+        local request = {
+            url      = request_url,
+            method   = "GET",
+            headers  = { ["User-Agent"] = "KOReader-WeUI-Updater/2.1" },
+            sink     = ltn12.sink.file(fh), -- stream directly to disk
+            redirect = follow_redirects,
+        }
+        local ok_request, first, code, headers, status = pcall(http.request, request)
+        pcall(fh.close, fh) -- proxy redirect bodies intentionally do not close the sink
+        if ok_su then socketutil:reset_timeout() end
+
+        if not ok_request then
+            return nil, nil, "network error (" .. tostring(first) .. ")"
+        end
+        -- Match socket.skip(1, http.request(...)) without losing errors from
+        -- the protected call above.
+        return code, headers, status or first
+    end
+
+    local function requestViaProxy(request_url)
+        local ok_proxy, Proxy = pcall(require, "weui_zlibrary_proxy")
+        if not ok_proxy or not Proxy or type(Proxy._proxyHttpRequest) ~= "function" then
+            return nil, nil, _("Z-Library proxy transport is unavailable.")
+        end
+        local cfg, cfg_err = Proxy._readConfig()
+        if not cfg then return nil, nil, tostring(cfg_err) end
+
+        local fh, err_open = io.open(dest_path, "wb")
+        if not fh then return nil, nil, "cannot create file: " .. tostring(err_open) end
+        if ok_su then
+            socketutil:set_timeout(DOWNLOAD_BLOCK_TIMEOUT, DOWNLOAD_TOTAL_TIMEOUT)
+        end
+        local request = {
+            url      = request_url,
+            method   = "GET",
+            headers  = { ["User-Agent"] = "KOReader-WeUI-Updater/2.1" },
+            sink     = ltn12.sink.file(fh),
+            redirect = false,
+        }
+        local ok_request, first, code, headers, status = pcall(
+            Proxy._proxyHttpRequest, request, cfg, http.request
         )
+        pcall(fh.close, fh)
+        if ok_su then socketutil:reset_timeout() end
+        if not ok_request then
+            return nil, nil, "network error (" .. tostring(first) .. ")"
+        end
+        return code, headers, status or first
     end
 
-    local code, headers, status = socket.skip(1, http.request({
-        url     = url,
-        method  = "GET",
-        headers = { ["User-Agent"] = "KOReader-WeUI-Updater/2.0" },
-        sink    = ltn12.sink.file(fh),   -- stream directly to disk
-        redirect = true,
-    }))
+    local function performAttempt()
+        local request_url = url
+        for redirect_count = 0, MAX_DOWNLOAD_REDIRECTS do
+            local code, headers, status
+            if use_proxy then
+                code, headers, status = requestViaProxy(request_url)
+            else
+                -- LuaSocket safely handles the complete GitHub redirect chain
+                -- for direct downloads.
+                code, headers, status = requestOnce(request_url, true)
+            end
 
-    if ok_su then socketutil:reset_timeout() end
-    -- ltn12.sink.file closes fh automatically.
+            if code == 200 then return true end
+            if use_proxy and tonumber(code) and tonumber(code) >= 300
+                    and tonumber(code) < 400 and type(headers) == "table" then
+                local location = headers.location or headers.Location
+                if type(location) == "string" and location ~= "" then
+                    local ok_url, socket_url = pcall(require, "socket.url")
+                    request_url = ok_url and socket_url.absolute(request_url, location) or location
+                    if request_url:sub(1, 8) ~= "https://" then
+                        return nil, "refused non-HTTPS redirect"
+                    end
+                    pcall(os.remove, dest_path)
+                else
+                    return nil, "redirect without location"
+                end
+            else
+                if ok_su and (
+                    code == socketutil.TIMEOUT_CODE or
+                    code == socketutil.SSL_HANDSHAKE_CODE or
+                    code == socketutil.SINK_TIMEOUT_CODE
+                ) then
+                    return nil, "timeout (" .. tostring(code) .. ")"
+                end
+                if headers == nil then
+                    return nil, "network error (" .. tostring(code or status) .. ")"
+                end
+                return nil, string.format("HTTP %s", tostring(code))
+            end
+        end
+        return nil, "too many redirects"
+    end
 
-    if ok_su and (
-        code == socketutil.TIMEOUT_CODE or
-        code == socketutil.SSL_HANDSHAKE_CODE or
-        code == socketutil.SINK_TIMEOUT_CODE
-    ) then
+    local last_err
+    for attempt = 1, DOWNLOAD_ATTEMPTS do
         pcall(os.remove, dest_path)
-        return nil, "timeout (" .. tostring(code) .. ")"
+        local ok, err = performAttempt()
+        if ok then return true end
+        last_err = err
+        logger.warn(string.format("weui updater: download attempt %d/%d failed: %s",
+            attempt, DOWNLOAD_ATTEMPTS, tostring(err)))
     end
-
-    if headers == nil then
-        pcall(os.remove, dest_path)
-        return nil, "network error (" .. tostring(code or status) .. ")"
-    end
-
-    if code == 200 then return true end
     pcall(os.remove, dest_path)
-    return nil, string.format("HTTP %s", tostring(code))
+    return nil, last_err or "download failed"
 end
 
 -- ---------------------------------------------------------------------------
@@ -479,7 +567,7 @@ local function _applyUpdate(download_url, new_version)
     local parent_dir = _plugin_dir:match("^(.+)/[^/]+$") or _plugin_dir
 
     local progress_msg = _toast(
-        string.format(_("Downloading We UI %s…"), new_version), 120
+        string.format(_("Downloading We UI %s…"), new_version), 360
     )
 
     local ok_tr, Trapper = pcall(require, "ui/trapper")
@@ -785,5 +873,22 @@ function M.setCustomApiUrl(url)
     -- Invalidate cached state so next check uses new URL.
     _state_loaded = false
 end
+
+function M.getUseZlibraryProxy()
+    local gs = _gs()
+    return gs and gs:readSetting(GS_USE_ZLIB_PROXY) == true or false
+end
+
+function M.setUseZlibraryProxy(enabled)
+    local gs = _gs()
+    if not gs then return end
+    gs:saveSetting(GS_USE_ZLIB_PROXY, enabled == true)
+    pcall(gs.flush, gs)
+end
+
+-- Deterministic download harness entry point. Production callers use
+-- _applyUpdate(); exposing this avoids real network traffic in regression
+-- tests while exercising retries, redirects, proxy selection and cleanup.
+M._httpGetToFile = _httpGetToFile
 
 return M

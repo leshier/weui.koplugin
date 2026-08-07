@@ -4876,6 +4876,18 @@ msgid "Custom update source saved."
 msgstr "自定义更新源已保存。"
 
 #: weui_menu.lua
+msgid "Use Z-Library proxy for update downloads"
+msgstr "更新下载使用 Z-Library 代理"
+
+#: weui_menu.lua
+msgid "Routes only We UI update package downloads through the proxy configured under Z-Library Proxy. Version checks and other KOReader traffic remain unchanged."
+msgstr "仅将 We UI 更新安装包的下载流量转发到“Z-Library 代理”中配置的代理服务器。版本检查和 KOReader 的其他网络流量不会改变。"
+
+#: weui_updater.lua
+msgid "Z-Library proxy transport is unavailable."
+msgstr "Z-Library 代理传输组件不可用。"
+
+#: weui_menu.lua
 msgid "Custom update source cleared."
 msgstr "自定义更新源已清除。"
 

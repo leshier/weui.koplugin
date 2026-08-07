@@ -4501,6 +4501,20 @@ WeUIPlugin.addToMainMenu = function(self, menu_items)
                 end,
             },
             {
+                text = _("Use Z-Library proxy for update downloads"),
+                keep_menu_open = true,
+                checked_func = function()
+                    local ok_upd, Updater = pcall(require, "weui_updater")
+                    return ok_upd and Updater.getUseZlibraryProxy()
+                end,
+                callback = function()
+                    local ok_upd, Updater = pcall(require, "weui_updater")
+                    if not ok_upd then return end
+                    Updater.setUseZlibraryProxy(not Updater.getUseZlibraryProxy())
+                end,
+                help_text = _([[Routes only We UI update package downloads through the proxy configured under Z-Library Proxy. Version checks and other KOReader traffic remain unchanged.]]),
+            },
+            {
                 text      = _("Factory Reset"),
                 separator = true,
                 callback  = function()

@@ -1704,6 +1704,18 @@ msgstr ""
 msgid "Custom update source saved."
 msgstr ""
 
+#: weui_menu.lua
+msgid "Use Z-Library proxy for update downloads"
+msgstr ""
+
+#: weui_menu.lua
+msgid "Routes only We UI update package downloads through the proxy configured under Z-Library Proxy. Version checks and other KOReader traffic remain unchanged."
+msgstr ""
+
+#: weui_updater.lua
+msgid "Z-Library proxy transport is unavailable."
+msgstr ""
+
 #: weui_menu.lua:4504
 msgid "Factory Reset"
 msgstr ""
