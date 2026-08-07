@@ -1163,16 +1163,12 @@ function WeUIPlugin:init()
                 elseif not installed and Proxy.isEnabled and Proxy.isEnabled() then
                     logger.warn("weui: Z-Library proxy transport unavailable:", tostring(install_err))
                 end
-                if Proxy.isEnabled and Proxy.isEnabled()
-                        and (not ok_install or not installed) then
-                    UIManager:show(InfoMessage:new{
-                        text = _("Z-Library proxy protection could not be installed. Network access was blocked to prevent a direct connection."),
-                    })
-                end
+                -- A freshly installed bundle may not have the companion
+                -- enabled yet. The network gate above is already fail-closed,
+                -- so keep startup quiet and show an actionable error only if
+                -- the user actually opens Z-Library (see weui_quickactions).
             elseif SUISettings:isTrue("weui_zlibrary_proxy_enabled") then
-                UIManager:show(InfoMessage:new{
-                    text = _("Z-Library proxy protection could not be installed. Network access was blocked to prevent a direct connection."),
-                })
+                logger.warn("weui: Z-Library proxy module unavailable; Z-Library access remains blocked")
             end
         end
         UIManager:scheduleIn(0, self._zlibrary_proxy_install_task)

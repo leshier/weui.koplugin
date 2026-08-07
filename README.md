@@ -8,17 +8,19 @@ companion source without changing the classic WeUI home and library layout.
 
 ### From a release (recommended)
 
-1. Download `weui.koplugin.zip` from the latest [Releases](../../releases).
+1. Download the single `weui.koplugin.zip` from the latest [Releases](../../releases).
+   It contains both WeUI and the pinned Z-Library companion.
 2. Unzip it into your KOReader `plugins/` directory so that you end up with:
    ```
    koreader/plugins/weui.koplugin/_meta.lua
+   koreader/plugins/zlibrary.koplugin/_meta.lua
    ```
-3. Restart KOReader and enable the plugin in
+3. Restart KOReader and enable the plugins you want in
    `Menu → Tools → More tools → Plugin management`.
 
 ### Z-Library companion
 
-Use the combined release archive, or install
+The single release archive includes a pinned copy of
 [`zlibrary.koplugin`](https://github.com/ZlibraryKO/zlibrary.koplugin) beside
 `weui.koplugin`. Enable both plugins and restart KOReader. Z-Library then
 appears inside the existing `We UI` settings menu and as an optional action in
@@ -72,7 +74,8 @@ Then restart KOReader. (Replace `<owner>` with this repository's owner.)
 
 The plugin has a built-in OTA updater (`weui_updater.lua`) that checks this
 repository's GitHub Releases for a newer version and, when found, downloads
-`weui.koplugin.zip` and installs it over the existing plugin directory.
+the single `weui.koplugin.zip` and installs both WeUI and its pinned Z-Library
+companion over the existing plugin directories.
 
 - **Manual:** `Menu → … → Check for Updates`.
 - **Automatic:** enable the auto-check option in the plugin settings. It runs
