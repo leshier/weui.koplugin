@@ -852,11 +852,11 @@ local function _registerBuiltins()
                 local instance = (ReaderUI and ReaderUI.instance and ReaderUI.instance.zlibrary)
                     or (FM and FM.instance and FM.instance.zlibrary)
                 if not instance then
-                    su(_("Z-Library plugin is not installed or enabled."))
+                    su(_("Embedded Z-Library module is unavailable."))
                     return
                 end
                 -- Apply the Z-Library-only transport before opening the
-                -- companion. This is also a lazy safety net when the shortcut
+                -- embedded module. This is also a lazy safety net when the shortcut
                 -- is tapped before the deferred startup installer has run.
                 local proxy_ok, Proxy = pcall(require, "weui_zlibrary_proxy")
                 local proxy_enabled = proxy_ok and Proxy and Proxy.isEnabled
@@ -871,7 +871,7 @@ local function _registerBuiltins()
                     su(_("Z-Library proxy protection could not be installed. Network access was blocked to prevent a direct connection."))
                     return
                 end
-                -- Call the companion's public event handler directly. A
+                -- Call the embedded module's public event handler directly. A
                 -- Dispatcher event can be swallowed while the WeUI
                 -- homescreen is above FileManager in the window stack.
                 local ok, handled = pcall(function()

@@ -1,8 +1,9 @@
 name: Release
 
 # Build and publish one downloadable weui.koplugin.zip release asset whenever
-# a version tag (v*) is pushed. The archive always contains both WeUI and its
-# pinned Z-Library companion. The OTA updater downloads this exact filename.
+# a version tag (v*) is pushed. Z-Library is vendored inside the WeUI plugin
+# directory, so the archive contains exactly one top-level .koplugin folder.
+# The OTA updater downloads this exact filename.
 
 on:
   push:
@@ -31,11 +32,12 @@ jobs:
           done < <(find . -name '*.lua' -not -path './.git/*')
           exit 0
 
-      - name: Stage WeUI
+      - name: Package WeUI
         run: |
           set -e
-          # The repo root IS the plugin. Stage it before adding the pinned
-          # companion to the single release archive.
+          # The repo root IS the complete plugin, including the embedded
+          # zlibrary/ module. Extracting into koreader/plugins/ therefore
+          # creates exactly one weui.koplugin/ directory.
           mkdir -p stage/weui.koplugin
           rsync -a \
             --exclude='.git' \
@@ -49,28 +51,11 @@ jobs:
             --exclude='*.swp' \
             --exclude='*~' \
             --exclude='weui_update.zip' \
+            --exclude='zlibrary_credentials.lua' \
             ./ stage/weui.koplugin/
-      - name: Package WeUI and Z-Library
-        run: |
-          set -e
-          ZLIBRARY_TAG="v1.0.43-302bed328645593fe1f67d626b7b577b9ff39999"
-          curl -fL --retry 3 \
-            "https://github.com/ZlibraryKO/zlibrary.koplugin/archive/refs/tags/${ZLIBRARY_TAG}.tar.gz" \
-            -o stage/zlibrary.tar.gz
-          mkdir -p stage/zlibrary-src stage/combined
-          tar -xzf stage/zlibrary.tar.gz -C stage/zlibrary-src --strip-components=1
-          cp -a stage/weui.koplugin stage/combined/weui.koplugin
-          mkdir -p stage/combined/zlibrary.koplugin
-          rsync -a \
-            --exclude='.git*' \
-            --exclude='.github' \
-            --exclude='.editorconfig' \
-            --exclude='test' \
-            --exclude='assets' \
-            stage/zlibrary-src/ stage/combined/zlibrary.koplugin/
-          ( cd stage/combined && zip -rq ../weui.koplugin.zip \
-              weui.koplugin zlibrary.koplugin )
-          test -f stage/combined/zlibrary.koplugin/LICENSE
+          ( cd stage && zip -rq weui.koplugin.zip weui.koplugin )
+          test -f stage/weui.koplugin/LICENSE.zlibrary
+          test -f stage/weui.koplugin/zlibrary/embedded_plugin.lua
           echo "::group::zip contents"
           unzip -l stage/weui.koplugin.zip | head -40
           echo "::endgroup::"

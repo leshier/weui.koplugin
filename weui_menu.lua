@@ -4651,8 +4651,8 @@ WeUIPlugin.addToMainMenu = function(self, menu_items)
                 end,
                 sub_item_table_func = makeQuickActionsMenu,
             },
-            -- A single native entry: the companion plugin owns its complete
-            -- search, account, server and download UI.
+            -- The embedded module owns its complete search, account, server
+            -- and download UI inside the unified WeUI plugin.
             {
                 text = _("Z-Library"),
                 callback = function()

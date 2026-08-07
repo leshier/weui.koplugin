@@ -90,11 +90,80 @@ local WeUIPlugin = WidgetContainer:new{
     _makeQuickActionsMenu     = nil,
     _goalTapCallback          = nil,
     _weread_plugin            = nil,
+    _zlibrary_plugin          = nil,
 }
 
 -- ---------------------------------------------------------------------------
 -- Lifecycle
 -- ---------------------------------------------------------------------------
+
+local function copyFileIfMissing(source, destination)
+    local existing = io.open(destination, "rb")
+    if existing then existing:close(); return true end
+    local input = io.open(source, "rb")
+    if not input then return true end
+    local data = input:read("*a")
+    input:close()
+    local output, err = io.open(destination, "wb")
+    if not output then return nil, err end
+    local ok, write_err = output:write(data)
+    output:close()
+    return ok and true or nil, write_err
+end
+
+function WeUIPlugin:_migrateStandaloneZlibrary()
+    local plugin_path = tostring(self.path or ""):gsub("/+$", "")
+    local plugins_dir = plugin_path:match("^(.+)/weui%.koplugin$")
+    if not plugins_dir then return end
+    local legacy_path = plugins_dir .. "/zlibrary.koplugin"
+
+    local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
+    if not ok_lfs or lfs.attributes(legacy_path, "mode") ~= "directory" then return end
+
+    -- The credentials file is optional and is the only user-owned file stored
+    -- inside the old plugin directory. Preserve it before removing that tree;
+    -- normal Z-Library settings already live in KOReader's settings directory.
+    local copied, copy_err = copyFileIfMissing(
+        legacy_path .. "/zlibrary_credentials.lua",
+        plugin_path .. "/zlibrary_credentials.lua"
+    )
+    if not copied then
+        logger.warn("weui: could not migrate Z-Library credentials file:", tostring(copy_err))
+        return
+    end
+
+    -- PluginLoader has discovered every plugin before instances are created.
+    -- WeUI sorts before zlibrary, so removing the legacy class here prevents a
+    -- second instance from being created later in the same startup.
+    local ok_loader, PluginLoader = pcall(require, "pluginloader")
+    if ok_loader and type(PluginLoader.enabled_plugins) == "table" then
+        for i = #PluginLoader.enabled_plugins, 1, -1 do
+            local candidate = PluginLoader.enabled_plugins[i]
+            if candidate and candidate.name == "zlibrary" then
+                table.remove(PluginLoader.enabled_plugins, i)
+            end
+        end
+    end
+
+    local ok_ffi, ffiUtil = pcall(require, "ffi/util")
+    local removed, remove_err
+    if ok_ffi and ffiUtil and type(ffiUtil.purgeDir) == "function" then
+        removed, remove_err = ffiUtil.purgeDir(legacy_path)
+    end
+    if not removed then
+        -- Recoverable fallback: it is no longer a .koplugin directory, so
+        -- KOReader will not discover it on the next startup.
+        local backup_path = legacy_path .. ".migrated-backup"
+        if lfs.attributes(backup_path, "mode") == nil then
+            removed, remove_err = os.rename(legacy_path, backup_path)
+        end
+    end
+    if removed then
+        logger.info("weui: migrated and removed standalone Z-Library plugin")
+    else
+        logger.warn("weui: failed to retire standalone Z-Library plugin:", tostring(remove_err))
+    end
+end
 
 function WeUIPlugin:_initWeReadModule()
     if self._weread_plugin then
@@ -159,9 +228,43 @@ function WeUIPlugin:_initWeReadModule()
     return inst_or_err
 end
 
+function WeUIPlugin:_initZlibraryModule()
+    if self._zlibrary_plugin then
+        return self._zlibrary_plugin
+    end
+
+    local ok_mod, ZlibraryPlugin = pcall(require, "zlibrary.embedded_plugin")
+    if not ok_mod or type(ZlibraryPlugin) ~= "table"
+            or type(ZlibraryPlugin.new) ~= "function" then
+        logger.err("weui: failed to load embedded Z-Library module:", tostring(ZlibraryPlugin))
+        return nil
+    end
+
+    local ok_inst, inst_or_err = pcall(ZlibraryPlugin.new, ZlibraryPlugin, {
+        ui = self.ui,
+        path = self.path,
+        embedded_in_weui = true,
+    })
+    if not ok_inst or type(inst_or_err) ~= "table" then
+        logger.err("weui: failed to initialize embedded Z-Library module:", tostring(inst_or_err))
+        return nil
+    end
+
+    self._zlibrary_plugin = inst_or_err
+    self.zlibrary = inst_or_err
+    if self.ui and type(self.ui.registerModule) == "function" then
+        self.ui:registerModule("zlibrary", inst_or_err)
+    elseif self.ui then
+        self.ui.zlibrary = inst_or_err
+    end
+    logger.info("weui: embedded Z-Library module initialized")
+    return inst_or_err
+end
+
 function WeUIPlugin:init()
     self._weui_tearing_down = nil
     local ok, err = pcall(function()
+        self:_migrateStandaloneZlibrary()
         -- -------------------------------------------------------------------
         -- One-shot rename migration: legacy (simpleui / lershierui) -> weui.
         -- Migrates data dir, settings file name, and G_reader_settings keys/values.
@@ -1132,10 +1235,13 @@ function WeUIPlugin:init()
                 pcall(SUIStyle.applyUIFont)
             end
         end
+        -- Z-Library is a child module of WeUI, not a second KOReader plugin.
+        -- Create it before registering our unified menu and installing the UI
+        -- and transport adapters below.
+        self:_initZlibraryModule()
         self.ui.menu:registerToMainMenu(self)
         -- Register Z-Library's fullscreen browser and result lists with the
-        -- generic WeUI bar injector.  The matcher resolves companion classes
-        -- lazily, so this remains safe regardless of plugin load order.
+        -- generic WeUI bar injector.
         self._zlibrary_ui_install_task = function()
             self._zlibrary_ui_install_task = nil
             if self._weui_tearing_down then return end
@@ -1148,10 +1254,8 @@ function WeUIPlugin:init()
             end
         end
         UIManager:scheduleIn(0, self._zlibrary_ui_install_task)
-        -- Z-Library remains an independent companion plugin.  Install our
-        -- request wrapper after PluginLoader has finished initialising every
-        -- plugin so all of its network paths (including its own native menu)
-        -- use the same fail-closed, Z-Library-only proxy when enabled.
+        -- Install the request wrapper after the embedded module has loaded so
+        -- all of its network paths use the same fail-closed proxy when enabled.
         self._zlibrary_proxy_install_task = function()
             self._zlibrary_proxy_install_task = nil
             if self._weui_tearing_down then return end

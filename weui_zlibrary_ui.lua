@@ -1,15 +1,14 @@
 -- weui_zlibrary_ui.lua — keep the WeUI navigation bars on Z-Library pages.
 --
--- zlibrary.koplugin deliberately remains an independent companion plugin.
+-- Z-Library is vendored as an embedded module under weui.koplugin/zlibrary/.
 -- Its main browser (MultiSearchDialog) and result lists are fullscreen, but
 -- they do not set KOReader's covers_fullscreen flag.  WeUI's generic bar
 -- injector consequently used to treat them as ordinary dialogs and the
--- companion's white page covered the bottom navigation bar.
+-- embedded page covered the bottom navigation bar.
 --
--- This adapter registers those two companion widget classes with WeUI's Bar
--- Injection API.  It contains no Z-Library business logic and does not patch
--- files in the companion plugin, so it works with both separate and combined
--- installations.
+-- This adapter registers those two widget classes with WeUI's Bar Injection
+-- API. It contains no Z-Library business logic, keeping vendored source
+-- upgrades isolated from WeUI's navigation layer.
 
 local logger = require("logger")
 local Screen = require("device").screen
@@ -218,7 +217,7 @@ end
 function M.openCredentials()
     local instance = getZlibraryInstance()
     if not instance then
-        return false, _("Z-Library plugin is not installed or enabled.")
+        return false, _("Embedded Z-Library module is unavailable.")
     end
     installCredentialsAdapter()
     if type(instance._promptForCredentials) == "function" then
@@ -226,7 +225,7 @@ function M.openCredentials()
         return true
     end
 
-    -- Compatibility fallback for older companion releases which only showed
+    -- Compatibility fallback for older vendored releases which only showed
     -- "Please set username and password" and offered no dialog from download.
     local ok_ui, Ui = pcall(require, "zlibrary.ui")
     local ok_config, Config = pcall(require, "zlibrary.config")
@@ -597,10 +596,10 @@ local function onRewrap(widget, context)
 end
 
 local function untrackCompanionDialog(widget)
-    -- zlibrary.koplugin tracks its fullscreen lists in DialogManager, but its
+    -- The embedded module tracks its fullscreen lists in DialogManager, but its
     -- generic Menu/MultiSearch close paths do not always remove them.  A tab
     -- switch closes live stack entries directly, so remove the same objects
-    -- from both possible companion instances to avoid a later double-close.
+    -- from both possible UI instances to avoid a later double-close.
     local instances = {}
     local FM = package.loaded["apps/filemanager/filemanager"]
     local ReaderUI = package.loaded["apps/reader/readerui"]

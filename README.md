@@ -1,31 +1,36 @@
 # We UI (`weui.koplugin`)
 
-A We UI for KOReader with integrated WeRead (微信读书) bookshelf, search,
-download, and reading support. Z-Library can be installed as an optional
-companion source without changing the classic WeUI home and library layout.
+A We UI for KOReader with integrated WeRead (微信读书) and Z-Library book
+sources without changing the classic WeUI home and library layout.
 
 ## Installation
 
 ### From a release (recommended)
 
 1. Download the single `weui.koplugin.zip` from the latest [Releases](../../releases).
-   It contains both WeUI and the pinned Z-Library companion.
+   Z-Library is already embedded in WeUI; it is not a second KOReader plugin.
 2. Unzip it into your KOReader `plugins/` directory so that you end up with:
    ```
    koreader/plugins/weui.koplugin/_meta.lua
-   koreader/plugins/zlibrary.koplugin/_meta.lua
+   koreader/plugins/weui.koplugin/zlibrary/api.lua
    ```
-3. Restart KOReader and enable the plugins you want in
+3. Delete any old standalone `koreader/plugins/zlibrary.koplugin/` directory,
+   restart KOReader, and enable only WeUI in
    `Menu → Tools → More tools → Plugin management`.
 
-### Z-Library companion
+### Embedded Z-Library
 
-The single release archive includes a pinned copy of
-[`zlibrary.koplugin`](https://github.com/ZlibraryKO/zlibrary.koplugin) beside
-`weui.koplugin`. Enable both plugins and restart KOReader. Z-Library then
+WeUI vendors the compatible Z-Library implementation from
+[`zlibrary.koplugin`](https://github.com/ZlibraryKO/zlibrary.koplugin) under its
+own `zlibrary/` module directory. Z-Library therefore
 appears inside the existing `We UI` settings menu and as an optional action in
 the existing navigation-bar customization list; it is not added to the default
 six-button bar.
+
+When upgrading from the old two-plugin layout, WeUI migrates an optional
+`zlibrary_credentials.lua` into its own directory and retires the standalone
+`zlibrary.koplugin/` directory. The credentials file is device-local and is
+never included in release archives.
 
 The WeUI bottom bar remains visible on Z-Library's main browser, search-result,
 and similar-book pages. Z-Library keeps its own page controls immediately above
@@ -45,7 +50,7 @@ icons and 40 px icon column as the WeRead download interface.
 
 Open `We UI → Z-Library Proxy` to route every Z-Library request through an
 independent proxy. This covers sign-in, search, covers, book downloads, mirror
-discovery, favorites, and the companion plugin's update checks/downloads.
+discovery, and favorites.
 
 - Supported addresses: `http://host:port` (HTTP CONNECT for HTTPS) and
   `socks5://host:port` / `socks5h://host:port` (remote target DNS).
@@ -74,8 +79,8 @@ Then restart KOReader. (Replace `<owner>` with this repository's owner.)
 
 The plugin has a built-in OTA updater (`weui_updater.lua`) that checks this
 repository's GitHub Releases for a newer version and, when found, downloads
-the single `weui.koplugin.zip` and installs both WeUI and its pinned Z-Library
-companion over the existing plugin directories.
+the single `weui.koplugin.zip` over the existing WeUI plugin directory. The
+embedded Z-Library module is updated together with WeUI.
 
 - **Manual:** `Menu → … → Check for Updates`.
 - **Automatic:** enable the auto-check option in the plugin settings. It runs
@@ -109,7 +114,7 @@ belong to their respective owners.
 - The integrated WeRead integration code is licensed under the GNU Affero
   General Public License v3 — see [`LICENSE.weread`](LICENSE.weread) and
   [`NOTICE.weread`](NOTICE.weread).
-- Z-Library remains a separate companion plugin. Combined archives preserve
-  its complete source directory and AGPL-3.0 licence.
+- The embedded Z-Library source remains under AGPL-3.0; see
+  [`LICENSE.zlibrary`](LICENSE.zlibrary).
 - `fonts/NotoEmoji-Regular.ttf` is licensed under the SIL Open Font License
   1.1 — see [`fonts/LICENSE`](fonts/LICENSE).

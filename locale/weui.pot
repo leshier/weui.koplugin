@@ -15,7 +15,7 @@ msgid "We UI"
 msgstr ""
 
 #: _meta.lua:6
-msgid "A We UI for KOReader with WeRead, private books, and optional Z-Library acquisition with a dedicated proxy."
+msgid "A We UI for KOReader with WeRead, private books, and embedded Z-Library acquisition with a dedicated proxy."
 msgstr ""
 
 #: main.lua:129 weui_config.lua:151 weui_weread.lua:333 weui_weread.lua:347
@@ -4560,6 +4560,10 @@ msgstr ""
 
 #: weui_quickactions.lua weui_zlibrary_ui.lua
 msgid "Z-Library plugin is not installed or enabled."
+msgstr ""
+
+#: weui_quickactions.lua weui_zlibrary_proxy.lua weui_zlibrary_ui.lua
+msgid "Embedded Z-Library module is unavailable."
 msgstr ""
 
 #: weui_quickactions.lua

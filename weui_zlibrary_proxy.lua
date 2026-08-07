@@ -547,7 +547,7 @@ local function installNetworkGate()
         -- proxy mode Z-Library only needs an active Wi-Fi connection; its
         -- actual reachability is determined by the proxy request itself.
         if M.isEnabled() and callerIsZlibrary() then
-            -- If a future/incompatible companion no longer exposes the
+            -- If a future vendored version no longer exposes the
             -- audited API entry point, abort its known network actions rather
             -- than letting the user's strict proxy setting degrade to direct.
             if not _transport_ready then return true end
@@ -570,7 +570,7 @@ function M.install()
     local ok, Api = pcall(require, "zlibrary.api")
     if not ok or type(Api) ~= "table" or type(Api.makeHttpRequest) ~= "function" then
         _transport_ready = false
-        return false, _("Z-Library plugin is not installed or enabled.")
+        return false, _("Embedded Z-Library module is unavailable.")
     end
     if Api._weui_zlibrary_proxy_owner == M
             and type(Api._weui_zlibrary_proxy_wrapper) == "function"

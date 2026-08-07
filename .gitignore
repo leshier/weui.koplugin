@@ -11,6 +11,9 @@
 # into the plugin directory (see weui_updater.lua _tmpZipPath).
 weui_update.zip
 
+# Optional device-local Z-Library credentials. Never package or commit this.
+zlibrary_credentials.lua
+
 # Locally assembled release archives. GitHub Actions builds release assets
 # from the tagged source tree, so binary packages never belong in commits.
 dist/
