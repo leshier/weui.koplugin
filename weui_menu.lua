@@ -4649,6 +4649,19 @@ WeUIPlugin.addToMainMenu = function(self, menu_items)
             },
             {
                 text_func = function()
+                    local ZlibraryUI = require("weui_zlibrary_ui")
+                    return _("Z-Library Account") .. " · "
+                        .. ZlibraryUI.getAccountStatusText()
+                end,
+                callback = function()
+                    local ok, err = require("weui_zlibrary_ui").openCredentials()
+                    if not ok then
+                        UIManager:show(InfoMessage():new{ text = err })
+                    end
+                end,
+            },
+            {
+                text_func = function()
                     local Proxy = require("weui_zlibrary_proxy")
                     return _("Z-Library Proxy") .. " · " .. Proxy.getStatusText()
                 end,

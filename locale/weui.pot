@@ -4003,8 +4003,24 @@ msgstr ""
 msgid "Auto: %1"
 msgstr ""
 
-#: weui_weread.lua:2007
+#: weui_weread.lua:2007 weui_zlibrary_proxy.lua weui_zlibrary_ui.lua
 msgid "Not configured"
+msgstr ""
+
+#: weui_weread.lua weui_zlibrary_ui.lua
+msgid "Configured"
+msgstr ""
+
+#: weui_zlibrary_ui.lua
+msgid "Plugin unavailable"
+msgstr ""
+
+#: weui_menu.lua
+msgid "Z-Library Account"
+msgstr ""
+
+#: weui_zlibrary_ui.lua
+msgid "Z-Library account settings are unavailable."
 msgstr ""
 
 #: weui_weread.lua:2009
@@ -4530,7 +4546,7 @@ msgstr ""
 msgid "Z-Library"
 msgstr ""
 
-#: weui_quickactions.lua
+#: weui_quickactions.lua weui_zlibrary_ui.lua
 msgid "Z-Library plugin is not installed or enabled."
 msgstr ""
 

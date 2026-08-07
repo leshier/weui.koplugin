@@ -4587,7 +4587,7 @@ msgstr "点击登录"
 msgid "Login credentials"
 msgstr "登录凭证"
 
-#: weui_weread.lua
+#: weui_weread.lua weui_zlibrary_ui.lua
 msgid "Configured"
 msgstr "已配置"
 
@@ -4961,7 +4961,7 @@ msgstr "微信读书模块不可用。"
 msgid "Z-Library"
 msgstr "Z-Library"
 
-#: weui_quickactions.lua
+#: weui_quickactions.lua weui_zlibrary_ui.lua
 msgid "Z-Library plugin is not installed or enabled."
 msgstr "Z-Library 插件未安装或未启用。"
 
@@ -5161,9 +5161,21 @@ msgstr "清除代理设置"
 msgid "Z-Library Proxy"
 msgstr "Z-Library 代理"
 
-#: weui_zlibrary_proxy.lua
+#: weui_zlibrary_proxy.lua weui_zlibrary_ui.lua
 msgid "Not configured"
 msgstr "未配置"
+
+#: weui_zlibrary_ui.lua
+msgid "Plugin unavailable"
+msgstr "插件不可用"
+
+#: weui_menu.lua
+msgid "Z-Library Account"
+msgstr "Z-Library 账号"
+
+#: weui_zlibrary_ui.lua
+msgid "Z-Library account settings are unavailable."
+msgstr "Z-Library 账号设置不可用。"
 
 #: weui_zlibrary_proxy.lua
 msgid "Proxy authentication failed. Check the username and password."

@@ -34,6 +34,11 @@ When Z-Library has no download directory configured yet, WeUI initializes it
 to KOReader's current Library root (`home_dir`). A directory selected later in
 Z-Library settings is treated as a user preference and is never overwritten.
 
+Downloads that require an account open the Z-Library credentials window after
+the book-details dialog has closed. The same window is always available from
+`We UI → Z-Library Account`. Detail actions use the same 24 px monochrome SVG
+icons and 40 px icon column as the WeRead download interface.
+
 #### Z-Library-only proxy
 
 Open `We UI → Z-Library Proxy` to route every Z-Library request through an

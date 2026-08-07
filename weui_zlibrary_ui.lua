@@ -13,12 +13,275 @@
 
 local logger = require("logger")
 local Screen = require("device").screen
+local _ = require("weui_i18n").translate
 
 local M = {}
 
 local DESCRIPTOR_ID = "zlibrary_full_page"
 local GROUP_ID = "zlibrary"
 local _installed = false
+local _button_class, _button_init_original, _button_init_wrapper
+local _details_class, _details_buttons_original, _details_buttons_wrapper
+local _details_download_original, _details_download_wrapper
+local _details_favorite_original, _details_favorite_wrapper
+local _zlibrary_ui_module, _credentials_original, _credentials_wrapper
+local installCredentialsAdapter
+
+local DETAIL_ICON_SIZE = Screen:scaleBySize(24)
+local DETAIL_ICON_BOX = Screen:scaleBySize(40)
+
+local function decorateBookDetailButton(button)
+    local Config = require("weui_config")
+    local mappings = {
+        { prefix = "\u{F002}  ", icon = Config.ICON.weread_book },
+        { prefix = "\u{F019}  ", icon = Config.ICON.weread_download },
+        { prefix = "\u{F02D}  ", icon = Config.ICON.weread_notes },
+        { prefix = "\u{F0E5}  ", icon = Config.ICON.weread_reviews },
+        { prefix = "\u{2665}  ", icon = Config.ICON.zlibrary_favorite },
+        { prefix = "\u{2661}  ", icon = Config.ICON.zlibrary_favorite },
+        { prefix = "\u{F021}  ", icon = Config.ICON.zlibrary_refresh },
+        { prefix = "\u{21A9}  ", icon = Config.ICON.weread_back },
+    }
+    if type(button) == "table" and type(button.text) == "string" then
+        for _, mapping in ipairs(mappings) do
+            if button.text:sub(1, #mapping.prefix) == mapping.prefix then
+                button.text = button.text:sub(#mapping.prefix + 1)
+                button.icon = mapping.icon
+                button.icon_width = DETAIL_ICON_SIZE
+                button.icon_height = DETAIL_ICON_SIZE
+                break
+            end
+        end
+    end
+    return button
+end
+
+local function decorateBookDetailButtons(rows)
+    for _, row in ipairs(type(rows) == "table" and rows or {}) do
+        for _, button in ipairs(type(row) == "table" and row or {}) do
+            decorateBookDetailButton(button)
+        end
+    end
+    return rows
+end
+
+local function deferBookDownload(dialog, UIManager)
+    local parent, book = dialog.parent_zlibrary, dialog.book
+    UIManager:close(dialog)
+    UIManager:nextTick(function()
+        if parent and type(parent.downloadBook) == "function" then
+            parent:downloadBook(book)
+        end
+    end)
+end
+
+-- KOReader's stock Button treats text and icon as mutually exclusive. Z-Library's
+-- detail actions need both, so enhance only the otherwise-unused combination of
+-- a text label plus a WeUI SVG path. Existing KOReader buttons are unchanged.
+local function installTextIconButtons()
+    local ok, Button = pcall(require, "ui/widget/button")
+    if not ok or type(Button) ~= "table" or type(Button.init) ~= "function" then
+        return false
+    end
+    if Button._weui_text_icon_owner == M
+            and Button.init == Button._weui_text_icon_wrapper then
+        return true
+    end
+    if Button._weui_text_icon_wrapper
+            and Button.init == Button._weui_text_icon_wrapper
+            and type(Button._weui_text_icon_original) == "function" then
+        Button.init = Button._weui_text_icon_original
+    end
+
+    local original = Button.init
+    local wrapper = function(self)
+        original(self)
+        if type(self.text) ~= "string" or type(self.icon) ~= "string"
+                or not self.icon:find("/", 1, true)
+                or not (self.label_container and self.label_widget) then
+            return
+        end
+
+        local CenterContainer = require("ui/widget/container/centercontainer")
+        local Geom = require("ui/geometry")
+        local HorizontalGroup = require("ui/widget/horizontalgroup")
+        local SUIStyle = require("weui_style")
+        local label_h = self.label_container.dimen and self.label_container.dimen.h
+            or self.label_widget:getSize().h
+        local icon = SUIStyle.iconImage(self.icon,
+            math.min(tonumber(self.icon_width) or DETAIL_ICON_SIZE, DETAIL_ICON_SIZE))
+        if not icon then return end
+        local icon_box = CenterContainer:new{
+            dimen = Geom:new{ w = DETAIL_ICON_BOX, h = label_h },
+            icon,
+        }
+        local group = HorizontalGroup:new{
+            align = "center",
+            icon_box,
+            self.label_widget,
+        }
+        self.label_container[1] = group
+        group.parent = self.label_container
+        self._weui_text_icon_widget = icon
+    end
+    Button.init = wrapper
+    Button._weui_text_icon_original = original
+    Button._weui_text_icon_wrapper = wrapper
+    Button._weui_text_icon_owner = M
+    _button_class, _button_init_original, _button_init_wrapper = Button, original, wrapper
+    return true
+end
+
+local function installBookDetailsAdapter()
+    local ok, module = pcall(require, "zlibrary.bookdetails_dialog")
+    local class = ok and module and module.BookDetailsDialog
+    if type(class) ~= "table" or type(class._buildButtons) ~= "function"
+            or type(class.onDownloadClick) ~= "function" then
+        return false
+    end
+    if class._weui_details_owner == M
+            and class._buildButtons == class._weui_details_buttons_wrapper
+            and class.onDownloadClick == class._weui_details_download_wrapper then
+        return true
+    end
+    if class._weui_details_buttons_wrapper
+            and class._buildButtons == class._weui_details_buttons_wrapper
+            and type(class._weui_details_buttons_original) == "function" then
+        class._buildButtons = class._weui_details_buttons_original
+    end
+    if class._weui_details_download_wrapper
+            and class.onDownloadClick == class._weui_details_download_wrapper
+            and type(class._weui_details_download_original) == "function" then
+        class.onDownloadClick = class._weui_details_download_original
+    end
+    if class._weui_details_favorite_wrapper
+            and class._generateFavoriteButtonDef == class._weui_details_favorite_wrapper
+            and type(class._weui_details_favorite_original) == "function" then
+        class._generateFavoriteButtonDef = class._weui_details_favorite_original
+    end
+
+    local original_buttons = class._buildButtons
+    local buttons_wrapper = function(self)
+        return decorateBookDetailButtons(original_buttons(self))
+    end
+    local original_download = class.onDownloadClick
+    local download_wrapper = function(self)
+        local UIManager = require("ui/uimanager")
+        -- Let UIManager finish removing and repainting the details dialog
+        -- before login() shows its MultiInputDialog. On Kindle, doing both in
+        -- one callback can leave the credentials window underneath the closing
+        -- dialog, so the user sees only the "set username/password" message.
+        deferBookDownload(self, UIManager)
+    end
+    local original_favorite = class._generateFavoriteButtonDef
+    local favorite_wrapper
+    if type(original_favorite) == "function" then
+        favorite_wrapper = function(self, ...)
+            return decorateBookDetailButton(original_favorite(self, ...))
+        end
+        class._generateFavoriteButtonDef = favorite_wrapper
+    end
+    class._buildButtons = buttons_wrapper
+    class.onDownloadClick = download_wrapper
+    class._weui_details_buttons_original = original_buttons
+    class._weui_details_buttons_wrapper = buttons_wrapper
+    class._weui_details_download_original = original_download
+    class._weui_details_download_wrapper = download_wrapper
+    class._weui_details_favorite_original = original_favorite
+    class._weui_details_favorite_wrapper = favorite_wrapper
+    class._weui_details_owner = M
+    _details_class = class
+    _details_buttons_original, _details_buttons_wrapper = original_buttons, buttons_wrapper
+    _details_download_original, _details_download_wrapper = original_download, download_wrapper
+    _details_favorite_original, _details_favorite_wrapper = original_favorite, favorite_wrapper
+    return true
+end
+
+local function getZlibraryInstance()
+    local ReaderUI = package.loaded["apps/reader/readerui"]
+    if ReaderUI and ReaderUI.instance and ReaderUI.instance.zlibrary then
+        return ReaderUI.instance.zlibrary
+    end
+    local FM = package.loaded["apps/filemanager/filemanager"]
+    return FM and FM.instance and FM.instance.zlibrary or nil
+end
+
+function M.getAccountStatusText()
+    local ok, Config = pcall(require, "zlibrary.config")
+    if not ok or not Config then return _("Plugin unavailable") end
+    if type(Config.hasCredentials) == "function" and Config.hasCredentials() then
+        return _("Configured")
+    end
+    return _("Not configured")
+end
+
+function M.openCredentials()
+    local instance = getZlibraryInstance()
+    if not instance then
+        return false, _("Z-Library plugin is not installed or enabled.")
+    end
+    installCredentialsAdapter()
+    if type(instance._promptForCredentials) == "function" then
+        instance:_promptForCredentials(function() end)
+        return true
+    end
+
+    -- Compatibility fallback for older companion releases which only showed
+    -- "Please set username and password" and offered no dialog from download.
+    local ok_ui, Ui = pcall(require, "zlibrary.ui")
+    local ok_config, Config = pcall(require, "zlibrary.config")
+    if not (ok_ui and Ui and type(Ui.showCredentialsDialog) == "function"
+            and ok_config and Config) then
+        return false, _("Z-Library account settings are unavailable.")
+    end
+    Ui.showCredentialsDialog(function(email, password)
+        Config.saveSetting(Config.SETTINGS_USERNAME_KEY, email)
+        Config.saveSetting(Config.SETTINGS_PASSWORD_KEY, password)
+        if type(Config.clearUserSession) == "function" then Config.clearUserSession() end
+        return true
+    end)
+    return true
+end
+
+installCredentialsAdapter = function()
+    local ok, Ui = pcall(require, "zlibrary.ui")
+    if not ok or type(Ui) ~= "table"
+            or type(Ui.showCredentialsDialog) ~= "function" then
+        return false
+    end
+    if Ui._weui_credentials_owner == M
+            and Ui.showCredentialsDialog == Ui._weui_credentials_wrapper then
+        return true
+    end
+    if Ui._weui_credentials_wrapper
+            and Ui.showCredentialsDialog == Ui._weui_credentials_wrapper
+            and type(Ui._weui_credentials_original) == "function" then
+        Ui.showCredentialsDialog = Ui._weui_credentials_original
+    end
+
+    local original = Ui.showCredentialsDialog
+    local wrapper = function(...)
+        local dialog = original(...)
+        if dialog then
+            local UIManager = require("ui/uimanager")
+            UIManager:nextTick(function()
+                if UIManager:isWidgetShown(dialog) then
+                    if type(dialog.onShowKeyboard) == "function" then
+                        pcall(dialog.onShowKeyboard, dialog)
+                    end
+                    UIManager:setDirty(dialog, "ui")
+                end
+            end)
+        end
+        return dialog
+    end
+    Ui.showCredentialsDialog = wrapper
+    Ui._weui_credentials_original = original
+    Ui._weui_credentials_wrapper = wrapper
+    Ui._weui_credentials_owner = M
+    _zlibrary_ui_module, _credentials_original, _credentials_wrapper = Ui, original, wrapper
+    return true
+end
 
 local function ensureDefaultDownloadDir()
     local ok_config, Config = pcall(require, "zlibrary.config")
@@ -400,6 +663,16 @@ function M.install()
             tostring(default_result))
     end
     if _installed then return true end
+    local text_icons_ok = installTextIconButtons()
+    local details_ok = installBookDetailsAdapter()
+    local credentials_ok = installCredentialsAdapter()
+    if not details_ok or not credentials_ok then
+        logger.warn("weui: incomplete Z-Library UI compatibility:",
+            "details=", tostring(details_ok), "credentials=", tostring(credentials_ok))
+    else
+        logger.info("weui: installed Z-Library account and detail UI adapters",
+            "text_icons=", tostring(text_icons_ok))
+    end
     local UI = require("weui_core")
     UI.BarInjection.register{
         id = DESCRIPTOR_ID,
@@ -423,6 +696,48 @@ function M.uninstall()
     if ok and UI and UI.BarInjection then
         UI.BarInjection.unregister(DESCRIPTOR_ID)
     end
+    if _details_class then
+        if _details_class._buildButtons == _details_buttons_wrapper then
+            _details_class._buildButtons = _details_buttons_original
+        end
+        if _details_class.onDownloadClick == _details_download_wrapper then
+            _details_class.onDownloadClick = _details_download_original
+        end
+        if _details_class._generateFavoriteButtonDef == _details_favorite_wrapper then
+            _details_class._generateFavoriteButtonDef = _details_favorite_original
+        end
+        if _details_class._weui_details_owner == M then
+            _details_class._weui_details_buttons_original = nil
+            _details_class._weui_details_buttons_wrapper = nil
+            _details_class._weui_details_download_original = nil
+            _details_class._weui_details_download_wrapper = nil
+            _details_class._weui_details_favorite_original = nil
+            _details_class._weui_details_favorite_wrapper = nil
+            _details_class._weui_details_owner = nil
+        end
+    end
+    if _zlibrary_ui_module
+            and _zlibrary_ui_module.showCredentialsDialog == _credentials_wrapper then
+        _zlibrary_ui_module.showCredentialsDialog = _credentials_original
+    end
+    if _zlibrary_ui_module and _zlibrary_ui_module._weui_credentials_owner == M then
+        _zlibrary_ui_module._weui_credentials_original = nil
+        _zlibrary_ui_module._weui_credentials_wrapper = nil
+        _zlibrary_ui_module._weui_credentials_owner = nil
+    end
+    if _button_class and _button_class.init == _button_init_wrapper then
+        _button_class.init = _button_init_original
+    end
+    if _button_class and _button_class._weui_text_icon_owner == M then
+        _button_class._weui_text_icon_original = nil
+        _button_class._weui_text_icon_wrapper = nil
+        _button_class._weui_text_icon_owner = nil
+    end
+    _details_class, _details_buttons_original, _details_buttons_wrapper = nil, nil, nil
+    _details_download_original, _details_download_wrapper = nil, nil, nil
+    _details_favorite_original, _details_favorite_wrapper = nil, nil
+    _zlibrary_ui_module, _credentials_original, _credentials_wrapper = nil, nil, nil
+    _button_class, _button_init_original, _button_init_wrapper = nil, nil, nil
     _installed = false
 end
 
@@ -470,5 +785,7 @@ end
 M.matchesWidget = isZlibraryPage
 M.resizeWidget = resizeZlibraryPage
 M.ensureDefaultDownloadDir = ensureDefaultDownloadDir
+M.decorateBookDetailButtons = decorateBookDetailButtons
+M.deferBookDownload = deferBookDownload
 
 return M
