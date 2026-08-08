@@ -47,6 +47,9 @@ local DOWNLOAD_BLOCK_TIMEOUT = 30
 local DOWNLOAD_TOTAL_TIMEOUT = 180
 local DOWNLOAD_ATTEMPTS = 2
 local MAX_DOWNLOAD_REDIRECTS = 8
+local CHECK_BLOCK_TIMEOUT = 20
+local CHECK_TOTAL_TIMEOUT = 60
+local CHECK_ATTEMPTS = 2
 
 local _DEFAULT_API_URL = string.format(
     "https://api.github.com/repos/%s/%s/releases/latest",
@@ -197,43 +200,99 @@ local function _httpGet(url)
     local ok_su, socketutil = pcall(require, "socketutil")
     local http   = require("socket/http")
     local ltn12  = require("ltn12")
-    local socket = require("socket")
+    local gs = _gs()
+    local use_proxy = gs and gs:readSetting(GS_USE_ZLIB_PROXY) == true
 
-    if ok_su then
-        socketutil:set_timeout(
-            socketutil.LARGE_BLOCK_TIMEOUT,
-            socketutil.LARGE_TOTAL_TIMEOUT
-        )
+    local function requestOnce(request_url)
+        local chunks = {}
+        local request = {
+            url     = request_url,
+            method  = "GET",
+            headers = {
+                ["User-Agent"] = "KOReader-WeUI-Updater/2.2",
+                ["Accept"]     = "application/vnd.github.v3+json",
+            },
+            sink     = ltn12.sink.table(chunks),
+            -- In proxy mode every redirect is followed explicitly below so
+            -- each hop receives a new CONNECT/SOCKS5 tunnel.
+            redirect = not use_proxy,
+        }
+
+        if ok_su then
+            socketutil:set_timeout(CHECK_BLOCK_TIMEOUT, CHECK_TOTAL_TIMEOUT)
+        end
+
+        local ok_request, first, code, headers, status
+        if use_proxy then
+            local ok_proxy, Proxy = pcall(require, "weui_zlibrary_proxy")
+            if not ok_proxy or not Proxy
+                    or type(Proxy._proxyHttpRequest) ~= "function"
+                    or type(Proxy._readConfig) ~= "function" then
+                if ok_su then socketutil:reset_timeout() end
+                return nil, nil, _("Z-Library proxy transport is unavailable."), nil
+            end
+            local cfg, cfg_err = Proxy._readConfig()
+            if not cfg then
+                if ok_su then socketutil:reset_timeout() end
+                return nil, nil, tostring(cfg_err), nil
+            end
+            ok_request, first, code, headers, status = pcall(
+                Proxy._proxyHttpRequest, request, cfg, http.request
+            )
+        else
+            ok_request, first, code, headers, status = pcall(http.request, request)
+        end
+
+        if ok_su then socketutil:reset_timeout() end
+        if not ok_request then
+            return nil, nil, "network error (" .. tostring(first) .. ")", nil
+        end
+        return code, headers, status or first, chunks
     end
 
-    local chunks = {}
-    local code, headers, status = socket.skip(1, http.request({
-        url     = url,
-        method  = "GET",
-        headers = {
-            ["User-Agent"] = "KOReader-WeUI-Updater/2.0",
-            ["Accept"]     = "application/vnd.github.v3+json",
-        },
-        sink     = ltn12.sink.table(chunks),
-        redirect = true,
-    }))
+    local function performAttempt()
+        local request_url = url
+        for _redirect_count = 0, MAX_DOWNLOAD_REDIRECTS do
+            local code, headers, status, chunks = requestOnce(request_url)
+            if code == 200 then return table.concat(chunks or {}) end
 
-    if ok_su then socketutil:reset_timeout() end
-
-    if ok_su and (
-        code == socketutil.TIMEOUT_CODE or
-        code == socketutil.SSL_HANDSHAKE_CODE or
-        code == socketutil.SINK_TIMEOUT_CODE
-    ) then
-        return nil, "timeout (" .. tostring(code) .. ")"
+            if use_proxy and tonumber(code) and tonumber(code) >= 300
+                    and tonumber(code) < 400 and type(headers) == "table" then
+                local location = headers.location or headers.Location
+                if type(location) ~= "string" or location == "" then
+                    return nil, "redirect without location"
+                end
+                local ok_url, socket_url = pcall(require, "socket.url")
+                request_url = ok_url and socket_url.absolute(request_url, location) or location
+                if request_url:sub(1, 8) ~= "https://" then
+                    return nil, "refused non-HTTPS redirect"
+                end
+            else
+                if ok_su and (
+                    code == socketutil.TIMEOUT_CODE or
+                    code == socketutil.SSL_HANDSHAKE_CODE or
+                    code == socketutil.SINK_TIMEOUT_CODE
+                ) then
+                    return nil, "timeout (" .. tostring(code) .. ")"
+                end
+                if headers == nil then
+                    return nil, "network error (" .. tostring(code or status) .. ")"
+                end
+                return nil, string.format("HTTP %s", tostring(code))
+            end
+        end
+        return nil, "too many redirects"
     end
 
-    if headers == nil then
-        return nil, "network error (" .. tostring(code or status) .. ")"
+    local last_err
+    for attempt = 1, CHECK_ATTEMPTS do
+        local body, err = performAttempt()
+        if body then return body end
+        last_err = err
+        logger.warn(string.format("weui updater: check attempt %d/%d failed: %s",
+            attempt, CHECK_ATTEMPTS, tostring(err)))
     end
-
-    if code == 200 then return table.concat(chunks) end
-    return nil, string.format("HTTP %s", tostring(code))
+    return nil, last_err or "update check failed"
 end
 
 local function _httpGetToFile(url, dest_path)
@@ -897,6 +956,7 @@ end
 -- Deterministic download harness entry point. Production callers use
 -- _applyUpdate(); exposing this avoids real network traffic in regression
 -- tests while exercising retries, redirects, proxy selection and cleanup.
+M._httpGet = _httpGet
 M._httpGetToFile = _httpGetToFile
 
 return M
