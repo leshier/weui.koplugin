@@ -86,6 +86,10 @@ embedded Z-Library module is updated together with WeUI.
 - **Automatic:** enable the auto-check option in the plugin settings. It runs
   once on startup (24 h throttle) and only when the network is already online.
 
+Manual checks use KOReader's connected-interface state instead of its external
+Internet probe. This avoids false "turn on Wi-Fi" prompts on connected Kindles
+when that probe is unreachable, including on some mainland China networks.
+
 Release downloads use a 30-second block timeout, a 180-second total timeout,
 and one automatic retry. On networks where GitHub Release assets are not
 reachable directly, enable `Use Z-Library proxy for update downloads`; every

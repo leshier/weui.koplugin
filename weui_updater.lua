@@ -781,8 +781,16 @@ end
 function M.checkForUpdates()
     local current = _currentVersion()
     local ok_nm, NetworkMgr = pcall(require, "ui/network/manager")
-    if ok_nm and NetworkMgr and NetworkMgr.runWhenOnline then
-        NetworkMgr:runWhenOnline(function()
+    -- Do not use runWhenOnline() here. KOReader's isOnline() performs an
+    -- external connectivity probe which may be unreachable on otherwise
+    -- healthy networks (notably on Kindles used in mainland China). In that
+    -- case runWhenOnline() asks the user to enable Wi-Fi again and, when the
+    -- device already has an IP address, never invokes our callback at all.
+    --
+    -- The updater only needs a connected interface. The actual GitHub request
+    -- below is the authoritative reachability check and reports its own error.
+    if ok_nm and NetworkMgr and NetworkMgr.runWhenConnected then
+        NetworkMgr:runWhenConnected(function()
             M._doManualCheck(current)
         end)
         return
