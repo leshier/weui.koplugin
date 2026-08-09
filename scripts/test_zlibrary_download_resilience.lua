@@ -8,6 +8,7 @@ local opened_book
 local link_mode = "ok"
 local trapper_mode = "fork_failure"
 local download_calls = 0
+local wifi_disable_calls = 0
 
 local Api = {
     getDownloadTempPath = function(path) return path .. ".downloading" end,
@@ -29,7 +30,6 @@ local Config = {
     getUserSession = function() return { user_id = "1", user_key = "key" } end,
     getDownloadDir = function() return "/tmp" end,
     getBookUrl = function() return nil end,
-    getTurnOffWifiAfterDownload = function() return false end,
     disableRuntimeCacheWrites = function() end,
 }
 
@@ -50,7 +50,11 @@ local Ui = {
     showErrorMessage = function(err) captured_error = tostring(err) end,
     showInfoMessage = function() end,
     confirmDownload = function(_, callback) callback() end,
-    confirmOpenBook = function(filename) opened_book = filename end,
+    confirmOpenBook = function(filename, open_callback, close_callback)
+        assert(type(open_callback) == "function")
+        assert(type(close_callback) == "function")
+        opened_book = filename
+    end,
     showRetryErrorDialog = function(err)
         captured_error = tostring(err)
     end,
@@ -59,9 +63,11 @@ local Ui = {
 package.loaded["zlibrary.api"] = Api
 package.loaded["zlibrary.async_helper"] = {}
 package.loaded["zlibrary.config"] = Config
-package.loaded.device = { hasWifiToggle = function() return false end }
 package.loaded["ui/network/manager"] = {
     willRerunWhenOnline = function() return false end,
+    disableWifi = function()
+        wifi_disable_calls = wifi_disable_calls + 1
+    end,
 }
 package.loaded["apps/reader/readerui"] = {}
 package.loaded["ui/trapper"] = Trapper
@@ -109,6 +115,7 @@ Download.run(plugin, book)
 assert(download_calls == 1, "fork failure should fall back to one in-process download")
 assert(opened_book == "Title - Author.epub")
 assert(captured_error == nil)
+assert(wifi_disable_calls == 0, "Z-Library completion must never disable Wi-Fi")
 
 -- A child that exits without a serialized result gets an actionable error.
 trapper_mode = "empty_result"
@@ -129,5 +136,18 @@ trapper_mode, link_mode = "inprocess", "empty"
 captured_error = nil
 Download.run(plugin, book)
 assert(captured_error == "The server returned an empty download link.")
+
+local function read(path)
+    local fh = assert(io.open(path, "rb"))
+    local data = fh:read("*a")
+    fh:close()
+    return data
+end
+
+assert(not read(root .. "/zlibrary/ui.lua"):find(
+    "Turn off Wi%-Fi after closing this dialog"),
+    "download completion UI must not offer to disable Wi-Fi")
+assert(not read(root .. "/zlibrary/download.lua"):find("disableWifi", 1, true),
+    "Z-Library download completion must not disable Wi-Fi")
 
 print("ZLIBRARY_DOWNLOAD_RESILIENCE_OK")

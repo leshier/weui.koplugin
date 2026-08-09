@@ -22,7 +22,6 @@ Config.SETTINGS_SEARCH_EXTENSIONS_KEY = "zlibrary_search_extensions"
 Config.SETTINGS_SEARCH_ORDERS_KEY = "zlibrary_search_order"
 Config.SETTINGS_VIEW_SETTINGS_KEY = "zlibrary_view_settings"
 Config.SETTINGS_DOWNLOAD_DIR_KEY = "zlibrary_download_dir"
-Config.SETTINGS_TURN_OFF_WIFI_AFTER_DOWNLOAD_KEY = "zlibrary_turn_off_wifi_after_download"
 Config.SETTINGS_SKIP_OPEN_BOOK_PROMPT_KEY = "zlibrary_skip_open_book_prompt"
 Config.SETTINGS_TIMEOUT_LOGIN_KEY = "zlibrary_timeout_login"
 Config.SETTINGS_TIMEOUT_SEARCH_KEY = "zlibrary_timeout_search"
@@ -834,14 +833,6 @@ function Config.getSearchOrderName()
         end
     end
     return search_order_name
-end
-
-function Config.getTurnOffWifiAfterDownload()
-    return Config.getSetting(Config.SETTINGS_TURN_OFF_WIFI_AFTER_DOWNLOAD_KEY, false)
-end
-
-function Config.setTurnOffWifiAfterDownload(turn_off)
-    Config.saveSetting(Config.SETTINGS_TURN_OFF_WIFI_AFTER_DOWNLOAD_KEY, turn_off)
 end
 
 -- Off by default: the prompt is the only confirmation most people get that a download finished,

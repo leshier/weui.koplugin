@@ -692,63 +692,34 @@ function Ui.confirmDownload(filename, ok_callback)
     end
 end
 
-function Ui.confirmOpenBook(filename, has_wifi_toggle, default_turn_off_wifi, ok_open_callback, cancel_callback)
-    local turn_off_wifi = default_turn_off_wifi
-
-    -- Downloading several books in a row means answering this dialog several times, which a user
-    -- asked to be able to switch off.
-    --
-    -- Skipping it leaves Wi-Fi alone, whatever the stored preference says. That preference is
-    -- "Turn off Wi-Fi after closing this dialog" -- there is no dialog here and nothing being
-    -- closed, so there is nothing for it to be after. It also lives only on this dialog, so
-    -- honouring it here would keep a background action running that the user can no longer see
-    -- or change. Anyone wanting Wi-Fi managed for them still has the prompt.
-    --
-    -- The notice matters as much as the skipping. This dialog is the only sign most people get
-    -- that a download worked; replacing one that demands an answer with one that dismisses
-    -- itself is the point, and replacing it with silence would be a different, worse feature.
+function Ui.confirmOpenBook(filename, ok_open_callback, cancel_callback)
+    -- Downloading several books in a row means answering this dialog several
+    -- times, so the prompt itself remains optional. Skipping it still shows a
+    -- success notice, and neither path owns or changes the Wi-Fi state.
     if Config.getSkipOpenBookPrompt() then
         Ui.showInfoMessage(string.format(T("\"%s\" downloaded."), filename))
-        if cancel_callback then cancel_callback(false) end
+        if cancel_callback then cancel_callback() end
         return
     end
 
     local function showDialog()
         -- No filename. It is built as "<title> - <author>.<format>", which for anything with a
-        -- long title runs to a paragraph, and this dialog already carries two buttons and the
-        -- Wi-Fi toggle's own long label. The user tapped download on a specific book moments
+        -- long title runs to a paragraph. The user tapped download on a specific book moments
         -- ago, so naming it back to them buys little for the height it costs.
         local full_text = T("Book downloaded successfully. Open it now?")
 
         local dialog
-        local other_buttons = nil
-
-        if has_wifi_toggle then
-            other_buttons = {{
-                {
-                    text = turn_off_wifi and ("☑ " .. T("Turn off Wi-Fi after closing this dialog")) or ("☐ " .. T("Turn off Wi-Fi after closing this dialog")),
-                    callback = function()
-                        turn_off_wifi = not turn_off_wifi
-                        Config.setTurnOffWifiAfterDownload(turn_off_wifi)
-                        _closeAndUntrackDialog(dialog)
-                        showDialog()
-                    end,
-                },
-            }}
-        end
 
         dialog = ConfirmBox:new{
             text = full_text,
             ok_text = T("Open book"),
             ok_callback = function()
-                ok_open_callback(turn_off_wifi)
+                ok_open_callback()
             end,
             cancel_text = T("Close"),
             cancel_callback = function()
-                cancel_callback(turn_off_wifi)
+                cancel_callback()
             end,
-            other_buttons = other_buttons,
-            other_buttons_first = true,
         }
 
         _showAndTrackDialog(dialog)

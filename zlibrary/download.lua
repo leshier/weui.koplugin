@@ -14,7 +14,6 @@
 local Api = require("zlibrary.api")
 local AsyncHelper = require("zlibrary.async_helper")
 local Config = require("zlibrary.config")
-local Device = require("device")
 local NetworkMgr = require("ui/network/manager")
 local ReaderUI = require("apps/reader/readerui")
 local Trapper = require("ui/trapper")
@@ -251,16 +250,10 @@ function Download.run(self, book)
                 -- reset download quota cache
                 self:resetDownloadQuotaCache()
 
-                local has_wifi_toggle = Device:hasWifiToggle()
-                local default_turn_off_wifi = Config.getTurnOffWifiAfterDownload()
-
-                Ui.confirmOpenBook(filename, has_wifi_toggle, default_turn_off_wifi, function(should_turn_off_wifi)
-                    if should_turn_off_wifi then
-                        NetworkMgr:disableWifi(function()
-                            logger.info("Zlibrary:downloadBook - Wi-Fi disabled after download as requested by user")
-                        end)
-                    end
-
+                -- Completing a book acquisition must not change system
+                -- connectivity. Readers often download several books in a
+                -- row, and Wi-Fi belongs to KOReader's system controls.
+                Ui.confirmOpenBook(filename, function()
                     if ReaderUI then
                         logger.info("Zlibrary:downloadBook - Cleaning up dialogs before opening reader")
                         self.dialog_manager:closeAllDialogs()
@@ -270,15 +263,7 @@ function Download.run(self, book)
                         logger.warn("Zlibrary:downloadBook - ReaderUI not available.")
                     end
                 end,
-                function(should_turn_off_wifi)
-                    if should_turn_off_wifi then
-                        NetworkMgr:disableWifi(function()
-                            logger.info("Zlibrary:downloadBook - Wi-Fi disabled after download as requested by user")
-                        end)
-                        logger.info("Zlibrary:downloadBook - Cleaning up dialogs cause wifi is turned off")
-                        self.dialog_manager:closeAllDialogs()
-                    end
-                end
+                function() end
             )
             else
                 -- Keep malformed/unexpected results on the same diagnostic

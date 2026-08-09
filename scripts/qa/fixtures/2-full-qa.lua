@@ -124,6 +124,7 @@ local offline_win
 local zlibrary_list
 local zlibrary_details
 local zlibrary_credentials
+local zlibrary_download_complete
 
 add("01-home", function()
     local Screen = require("device").screen
@@ -262,12 +263,27 @@ end, { cleanup = function()
     zlibrary_list = nil
 end })
 
-add("22-reader", function()
+add("22-zlibrary-download-complete", function()
+    require("zlibrary.ui").confirmOpenBook(
+        "墨水屏阅读体验设计.epub",
+        function() end,
+        function() end
+    )
+    zlibrary_download_complete = top_widget()
+    assert(zlibrary_download_complete, "download completion dialog did not open")
+    assert(zlibrary_download_complete.other_buttons == nil,
+        "download completion dialog must not contain a Wi-Fi action")
+end, { cleanup = function()
+    safe_close(zlibrary_download_complete)
+    zlibrary_download_complete = nil
+end })
+
+add("23-reader", function()
     local ReaderUI = require("apps/reader/readerui")
     ReaderUI:showReader(library .. "/欢迎使用 WeUI.txt")
 end, { wait = 3.0 })
 
-add("23-sleep-screen", function()
+add("24-sleep-screen", function()
     assert(require("apps/reader/readerui").instance, "reader not active before screensaver")
     local Screen = require("device").screen
     append_result("INFO", "sleep-before", table.concat({
@@ -281,7 +297,7 @@ add("23-sleep-screen", function()
     append_result("INFO", "sleep-after", table.concat({
         Screen:getWidth(), Screen:getHeight(), Screen:getRotationMode(),
     }, "x"))
-    UIManager:scheduleIn(0.8, function() trace_edge_widgets("23-sleep-screen") end)
+    UIManager:scheduleIn(0.8, function() trace_edge_widgets("24-sleep-screen") end)
 end, {
     wait = 1.0,
     cleanup = function()
@@ -292,7 +308,7 @@ end, {
     end,
 })
 
-add("24-return-library", function()
+add("25-return-library", function()
     local ReaderUI = require("apps/reader/readerui")
     assert(ReaderUI.instance, "reader instance missing")
     ReaderUI.instance:onHome()
