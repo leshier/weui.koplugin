@@ -215,17 +215,19 @@ local function _showMultiSelectionDialog(parent_ui, title, setting_key, options_
 
     local function _matches(option_info)
         if not filter_query then return true end
+        local display_name = Config.getLanguageDisplayName(option_info.value, option_info.name)
         -- Match the API value as well as the display name, so a native-script name (日本語) is
         -- found by typing its English key ("japanese"), and any substring ("ish" -> Irish) hits --
         -- KOReader's own type-jump only matches a prefix of the shown text and stops at the first.
-        return option_info.name:lower():find(filter_query, 1, true) ~= nil
+        return display_name:lower():find(filter_query, 1, true) ~= nil
+            or option_info.name:lower():find(filter_query, 1, true) ~= nil
             or option_info.value:lower():find(filter_query, 1, true) ~= nil
     end
 
     local function _buildItem(option_info)
         local option_value = option_info.value
         return {
-            text = option_info.name,
+            text = Config.getLanguageDisplayName(option_info.value, option_info.name),
             mandatory_func = function()
                 return current_selection_state[option_value] and "[X]" or "[ ]"
             end,
@@ -461,7 +463,8 @@ function Ui.showSearchDialog(parent_zlibrary, def_input)
     local lang_text = T("Set languages")
     if #selected_languages > 0 then
         if #selected_languages == 1 then
-            lang_text = string.format(T("Language: %s"), selected_languages[1])
+            lang_text = string.format(T("Language: %s"),
+                Config.getLanguageDisplayName(selected_languages[1], selected_languages[1]))
         else
             lang_text = string.format(T("Languages (%d)"), #selected_languages)
         end
@@ -501,7 +504,7 @@ function Ui.showSearchDialog(parent_zlibrary, def_input)
             parent_zlibrary:performSearch(trimmed_query)
         end,
         }},{{
-            text = string.format("%s: %s \u{25BC}", T("Sort by"), search_order_name),
+            text = string.format(T("%s: %s"), T("Sort by"), search_order_name) .. " \u{25BC}",
             callback = function()
                 -- Carry over what the user has typed so far; def_input is the value captured
                 -- when this dialog was built and would silently discard it.
@@ -545,7 +548,8 @@ function Ui.createBookMenuItem(book_data, parent_zlibrary_instance, is_show_cove
     local title = util.htmlEntitiesToUtf8(title_for_html)
     local author_for_html = (type(book_data.author) == "string" and book_data.author) or T("Unknown Author")
     local author = util.htmlEntitiesToUtf8(author_for_html)
-    local combined_text = string.format("\u{FFF1}\u{FFF2}%s\u{FFF3} by %s%s", title, author, year_str)
+    local combined_text = string.format(T("%s by %s%s"),
+        "\u{FFF1}\u{FFF2}" .. title .. "\u{FFF3}", author, year_str)
 
     local additional_info_parts = {}
     local selected_extensions = Config.getSearchExtensions()
@@ -590,7 +594,7 @@ function Ui.createSearchResultsMenu(parent_ui_ref, query_string, initial_menu_it
     local search_order_name = Config.getSearchOrderName()
     local menu = Menu:new{
         title = _colon_concat(T("Search Results"), query_string),
-        subtitle = string.format("%s: %s", T("Sort by"), search_order_name),
+        subtitle = string.format(T("%s: %s"), T("Sort by"), search_order_name),
         title_bar_left_icon = on_new_search and "appbar.search" or nil,
         item_table = initial_menu_items,
         parent = parent_ui_ref,
@@ -744,7 +748,7 @@ function Ui.showSimilarBooksMenu(ui_self, books, plugin_self, source_title)
     end
 
     if #menu_items == 0 then
-       Ui.showInfoMessage(string.format(T("No %s found, please try again. Sometimes this requires a couple of retries."), "similar books"))
+       Ui.showInfoMessage(T("No similar books found"))
         return
     end
 
@@ -1253,7 +1257,7 @@ function Ui.showCredentialsDialog(validate_and_save_callback, test_callback, opt
         fields = {{
                 description = T("Email Address"),
                 text = current_email,
-                hint = "example@email.com",
+                hint = T("Enter email address"),
             }, {
                 description = T("Password"),
                 text = current_password,

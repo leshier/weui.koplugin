@@ -27,6 +27,28 @@ Api.BLOCKED_TEXT = T("This Z-library server is refusing automated access")
 -- one locale out of fourteen.
 Api.CREDENTIALS_REJECTED_TEXT = T("Credentials rejected or invalid response")
 
+local function _isSimplifiedChineseUi()
+    local GetText = require("gettext")
+    local language = GetText.current_lang
+    if not language and G_reader_settings then
+        language = G_reader_settings:readSetting("language")
+    end
+    return language == "zh_CN" or language == "zh_Hans"
+end
+
+-- API messages are controlled by whichever mirror answered and are commonly English. Showing
+-- those strings verbatim would leak untranslated text into an otherwise Chinese dialog. Keep the
+-- raw response in the log, but use the operation-specific translated fallback on Chinese UIs.
+local function _userFacingApiMessage(message, fallback)
+    if message == nil or message == "" then
+        return fallback
+    end
+    if _isSimplifiedChineseUi() then
+        return fallback
+    end
+    return tostring(message)
+end
+
 -- Did the server read these credentials and refuse them?
 --
 -- Positive matches only. Anything unrecognised -- a timeout, a dead mirror, a bot-challenge page,
@@ -672,9 +694,11 @@ function Api.makeHttpRequest(options)
                     "Zlibrary:Api.makeHttpRequest - %s answered a bot-check page (status %s), not the API",
                     _loggableUrl(options.url), tostring(result.status_code)))
             elseif json_error then
-                result.error = json_error
+                result.error = _userFacingApiMessage(json_error,
+                    T("API returned an error, please try again"))
             else
-                result.error = string.format("%s: %s (%s)", T("HTTP Error"), result.status_code, r_status_str or T("Unknown Status"))
+                result.error = string.format(T("%s: %s (%s)"), T("HTTP Error"),
+                    result.status_code, r_status_str or T("Unknown Status"))
             end
         end
     elseif _looksLikeBotChallenge(result.body) then
@@ -765,7 +789,9 @@ function Api.login(email, password, is_redir_callback)
         local api_message = (type(data.error) == "table" and data.error.message) or data.error or
                            (type(session) == "table" and session.message) or
                            data.message
-        result.error = api_message and tostring(api_message) or (http_result.error or T("Login failed"))
+        local fallback = Api.isCredentialRejection(api_message)
+            and Api.CREDENTIALS_REJECTED_TEXT or T("Login failed")
+        result.error = _userFacingApiMessage(api_message, http_result.error or fallback)
         logger.warn(string.format("Zlibrary:Api.login - END (API error) - Error: %s", result.error))
         return result
     end
@@ -780,7 +806,11 @@ function Api.login(email, password, is_redir_callback)
     local user_key = session.remix_userkey or session.user_key or ""
 
     if user_id == "" or user_key == "" then
-        result.error = T("Login failed") .. ": " .. (session.message or data.message or Api.CREDENTIALS_REJECTED_TEXT)
+        local api_message = session.message or data.message
+        local fallback = Api.isCredentialRejection(api_message)
+            and Api.CREDENTIALS_REJECTED_TEXT or T("Credentials rejected or invalid response")
+        result.error = string.format(T("%s: %s"), T("Login failed"),
+            _userFacingApiMessage(api_message, fallback))
         logger.warn(string.format("Zlibrary:Api.login - END (Credentials error) - Error: %s", result.error))
         return result
     end
@@ -879,7 +909,7 @@ function Api.search(query, user_id, user_key, languages, extensions, order, page
     if data.error then
         -- data.error may be a string or an object; guard the index the way _extractErrorFromJsonBody does.
         local api_message = (type(data.error) == "table" and data.error.message) or data.error
-        result.error = T("Search API error") .. ": " .. tostring(api_message)
+        result.error = _userFacingApiMessage(api_message, T("Search API error"))
         logger.warn(string.format("Zlibrary:Api.search - END (API error in response) - Error: %s", result.error))
         return result
     end
@@ -983,7 +1013,7 @@ function Api.downloadBook(download_url, target_filepath, user_id, user_key, refe
     end
 
     if http_result.error or (http_result.status_code and http_result.status_code ~= 200) then
-        result.error = http_result.error or string.format("%s: %s", T("HTTP Error"), http_result.status_code)
+        result.error = http_result.error or string.format(T("%s: %s"), T("HTTP Error"), http_result.status_code)
         discardTempFile()
         logger.err(string.format("Zlibrary:Api.downloadBook - END (Download error) - Error: %s, Status: %s", result.error, tostring(http_result.status_code)))
         return result
@@ -1050,7 +1080,7 @@ function Api.downloadBookCover(download_url, target_filepath)
     end
 
     if http_result.status_code ~= 200 then
-        result.error = string.format("%s: %s", T("Download HTTP Error"), http_result.status_code)
+        result.error = string.format(T("%s: %s"), T("Download HTTP Error"), http_result.status_code)
         discardPartialFile()
         logger.err("Zlibrary:Api.downloadBookCover - END (HTTP status error) - Error: " .. result.error)
         return result
@@ -1097,7 +1127,7 @@ function Api.getRecommendedBooks(user_id, user_key)
 
     if data.success ~= 1 or not data.books then
         logger.warn("Api.getRecommendedBooks - API error: ", http_result.body)
-        return { error = data.message or T("API returned an error for recommended books.") }
+        return { error = _userFacingApiMessage(data.message, T("API returned an error for recommended books.")) }
     end
 
     local transformed_books = _transformApiBookData(data.books)
@@ -1140,7 +1170,7 @@ function Api.getMostPopularBooks(user_id, user_key)
 
     if data.success ~= 1 or not data.books then
         logger.warn("Api.getMostPopularBooks - API error: ", http_result.body)
-        return { error = data.message or T("API returned an error for most popular books.") }
+        return { error = _userFacingApiMessage(data.message, T("API returned an error for most popular books.")) }
     end
 
     local transformed_books = _transformApiBookData(data.books)
@@ -1185,7 +1215,7 @@ function Api.getBookDetails(user_id, user_key, book_id, book_hash)
 
     if data.success ~= 1 or not data.book then
         logger.warn("Api.getBookDetails - API error: ", http_result.body)
-        return { error = data.message or T("API returned an error for book details.") }
+        return { error = _userFacingApiMessage(data.message, T("API returned an error for book details.")) }
     end
 
     local transformed_book = _transformApiBookData(data.book)
@@ -1235,7 +1265,7 @@ function Api.getDownloadLink(user_id, user_key, book_id, book_hash)
 
     if data.success ~= 1 or not data.file then
         logger.warn("Api.getDownloadLink - API error: ", http_result.body)
-        return { error = data.message or T("API returned an error for download link.") }
+        return { error = _userFacingApiMessage(data.message, T("API returned an error for download link.")) }
     end
 
     local file_data = data.file
@@ -1299,7 +1329,7 @@ function Api.getSimilarBooks(user_id, user_key, book_id, book_hash)
 
     if data.success ~= 1 or not data.books then
         logger.warn("Api.getSimilarBooks - API error: ", http_result.body)
-        return { error = data.message or T("API returned an error for similar books.") }
+        return { error = _userFacingApiMessage(data.message, T("API returned an error for similar books.")) }
     end
 
     local transformed_books = _transformApiBookData(data.books)
@@ -1347,7 +1377,7 @@ function Api.getDownloadedBooks(user_id, user_key, page, order)
 
     if not (data.success == 1 and data.books and type(data.pagination) == "table") then
         logger.warn("Api.getDownloadedBooks - API error: ", http_result.body)
-        return { error = data.message or T("API returned an error for downloaded books.") }
+        return { error = _userFacingApiMessage(data.message, T("API returned an error for downloaded books.")) }
     end
 
     local pagination = data.pagination
@@ -1399,7 +1429,7 @@ function Api.getFavoriteBooks(user_id, user_key, page, order)
 
     if not (data.success == 1 and data.books and data.pagination) then
         logger.warn("Api.getFavoriteBooks - API error: ", http_result.body)
-        return { error = data.message or T("API returned an error for favorite books.") }
+        return { error = _userFacingApiMessage(data.message, T("API returned an error for favorite books.")) }
     end
 
     local pagination = data.pagination
@@ -1451,7 +1481,7 @@ function Api.deleteDownloadedBook(user_id, user_key, book_stub)
 
     if data.success ~= 1 then
         logger.warn("Api.deleteDownloadedBook - API error: ", http_result.body)
-        return { error = data.message or T("API returned an error for remove from downloaded.") }
+        return { error = _userFacingApiMessage(data.message, T("API returned an error for remove from downloaded.")) }
     end
 
     return { success = true }
@@ -1494,7 +1524,7 @@ function Api.unfavoriteBook(user_id, user_key, book_stub)
 
     if data.success ~= 1 then
         logger.warn("Api.unfavoriteBook - API error: ", http_result.body)
-        return { error = data.message or T("API returned an error for unfavorite book.") }
+        return { error = _userFacingApiMessage(data.message, T("API returned an error for unfavorite book.")) }
     end
 
     return { success = true }
@@ -1535,7 +1565,7 @@ function Api.getDownloadQuotaStatus(user_id, user_key)
 
     if not (data.success == 1 and type(data.user) == "table" and data.user.downloads_today ~= nil )then
         logger.warn("Api.getDownloadQuotaStatus - API error: ", http_result.body)
-        return { error = data.message or T("API returned an error for download quota status.") }
+        return { error = _userFacingApiMessage(data.message, T("API returned an error for download quota status.")) }
     end
 
     return { quota_status = {today = data.user.downloads_today, limit = data.user.downloads_limit}}
@@ -1576,7 +1606,7 @@ function Api.getFavoriteBookIds(user_id, user_key)
 
     if not (data.success == 1 and data.books) then
         logger.warn("Api.getFavoriteBookIds - API error: ", http_result.body)
-        return { error = data.message or T("API returned an error for favorite-book IDs.") }
+        return { error = _userFacingApiMessage(data.message, T("API returned an error for favorite-book IDs.")) }
     end
 
     return { books = data.books }
@@ -1619,7 +1649,7 @@ function Api.favoriteBook(user_id, user_key, book_stub)
 
     if data.success ~= 1 then
         logger.warn("Api.favoriteBook - API error: ", http_result.body)
-        return { error = data.message or T("API returned an error for favorite book.") }
+        return { error = _userFacingApiMessage(data.message, T("API returned an error for favorite book.")) }
     end
 
     return { success = true }
@@ -1732,7 +1762,7 @@ function Api.getBookComments(user_id, user_key, book_id)
     if data.success ~= 1 then
         logger.warn("Api.getBookComments - API error: ", http_result.body)
         return {
-            error = data.message or T("API returned an error for book comments.")
+            error = _userFacingApiMessage(data.message, T("API returned an error for book comments."))
         }
     end
 

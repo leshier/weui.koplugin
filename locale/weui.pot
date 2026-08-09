@@ -3376,6 +3376,9 @@ msgstr ""
 msgid "Error checking for updates."
 msgstr ""
 
+msgid "All update sources failed. Please check the network or proxy settings."
+msgstr ""
+
 #: weui_updater.lua:719
 msgid "Error checking for updates: "
 msgstr ""

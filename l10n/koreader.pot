@@ -678,6 +678,22 @@ msgstr ""
 msgid "Format"
 msgstr ""
 
+#: zlibrary/bookdetails_dialog.lua:567
+msgid "Not available"
+msgstr ""
+
+#, lua-format
+msgid "%s by %s%s"
+msgstr ""
+
+#, lua-format
+msgid "%s: %s (%s)"
+msgstr ""
+
+#, lua-format
+msgid "%s: %s"
+msgstr ""
+
 #: zlibrary/bookdetails_dialog.lua:568 zlibrary/multisearch_dialog.lua:450
 msgid "Download book"
 msgstr ""
@@ -1289,6 +1305,9 @@ msgstr ""
 
 #: zlibrary/ui.lua:1274
 msgid "Email Address"
+msgstr ""
+
+msgid "Enter email address"
 msgstr ""
 
 #: zlibrary/ui.lua:1278

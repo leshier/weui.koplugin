@@ -306,6 +306,48 @@ Config.SUPPORTED_LANGUAGES = {
     { name = "Zulu", value = "zulu" },
 }
 
+-- Z-Library needs its stable English keys in requests, while the reader needs human-readable
+-- names in the UI. Keep both concerns separate so switching the display language never changes
+-- what is sent to the service. The reverse index also turns metadata such as "English" into the
+-- same localized label used by the language picker.
+local LANGUAGE_BY_VALUE = {}
+local LANGUAGE_VALUE_BY_NAME = {}
+for _, language in ipairs(Config.SUPPORTED_LANGUAGES) do
+    LANGUAGE_BY_VALUE[language.value:lower()] = language
+    LANGUAGE_VALUE_BY_NAME[language.name:lower()] = language.value
+end
+
+local function _isSimplifiedChineseUi()
+    local GetText = require("gettext")
+    local language = GetText.current_lang
+    if not language and G_reader_settings then
+        language = G_reader_settings:readSetting("language")
+    end
+    return language == "zh_CN" or language == "zh_Hans"
+end
+
+function Config.getLanguageDisplayName(value, fallback)
+    if type(value) ~= "string" or value == "" then
+        return fallback or value
+    end
+
+    local input_key = value:lower()
+    local language = LANGUAGE_BY_VALUE[input_key]
+    local api_key = language and language.value or LANGUAGE_VALUE_BY_NAME[input_key]
+
+    if _isSimplifiedChineseUi() and api_key then
+        local chinese_names = require("zlibrary.language_names_zh")
+        if chinese_names[api_key] then
+            return chinese_names[api_key]
+        end
+    end
+
+    return (language and language.name)
+        or (api_key and LANGUAGE_BY_VALUE[api_key] and LANGUAGE_BY_VALUE[api_key].name)
+        or fallback
+        or value
+end
+
 Config.SUPPORTED_EXTENSIONS = {
     { name = "AZW", value = "AZW" },
     { name = "AZW3", value = "AZW3" },

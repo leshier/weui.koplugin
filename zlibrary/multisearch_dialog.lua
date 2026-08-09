@@ -275,7 +275,8 @@ function SearchDialog:_getMenuItems(books)
     for i, book in ipairs(books) do
         title = book.title or T("Untitled")
         author = book.author or T("Unknown Author")
-        menu_text = string.format("\u{FFF1}\u{FFF2}%s\u{FFF3} - %s", title, author)
+        menu_text = string.format(T("%s by %s%s"),
+            "\u{FFF1}\u{FFF2}" .. title .. "\u{FFF3}", author, "")
         mandatory_text = mandatory_func and mandatory_func(book)
 
         table.insert(menu_items, {
@@ -413,7 +414,7 @@ function SearchDialog:onMenuHold(item)
     local dialog
     local buttons = {}
     if book.title then
-        local button_text = string.format("%s: %s", T("Title"), book.title)
+        local button_text = string.format(T("%s: %s"), T("Title"), book.title)
         table.insert(buttons, {{
             text = button_text,
             callback = function()
@@ -423,7 +424,7 @@ function SearchDialog:onMenuHold(item)
         }})
     end
     if book.author then
-        local button_text = string.format("%s: %s", T("Author"), book.author)
+        local button_text = string.format(T("%s: %s"), T("Author"), book.author)
         table.insert(buttons, {{
             text = button_text,
             callback = function()

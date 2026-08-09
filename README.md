@@ -95,13 +95,15 @@ Manual checks use KOReader's connected-interface state instead of its external
 Internet probe. This avoids false "turn on Wi-Fi" prompts on connected Kindles
 when that probe is unreachable, including on some mainland China networks.
 
-Version checks use a 20-second block timeout, a 60-second total timeout and one
-automatic retry. Release downloads use a 30-second block timeout, a 180-second
-total timeout, and one automatic retry. On networks where GitHub is not
-reachable directly, enable `Use Z-Library proxy for We UI updates`; version
-checks, every HTTPS redirect, and the asset download then remain inside the
-configured HTTP CONNECT or SOCKS5 tunnel. Other KOReader traffic keeps its
-original route.
+Version checks try the GitHub Releases API and two jsDelivr metadata edges with
+a 10-second block timeout and 20-second total timeout per source. They do not
+depend on `raw.githubusercontent.com`, which is frequently unreachable on
+mainland networks. Release downloads use a 30-second block timeout, a 180-second
+total timeout, and one automatic retry. If the Z-Library proxy is enabled and
+configured, a failed direct check or download automatically retries through it.
+Enabling `Use Z-Library proxy for We UI updates` forces version checks, HTTPS
+redirects, and package downloads through the proxy from the first request.
+Other KOReader traffic keeps its original route.
 
 The installed version is read from `_meta.lua`; releases are tagged `vX.Y.Z`.
 

@@ -45,8 +45,8 @@ set +e
     WEUI_QA_LIBRARY="$qa_root/library" \
     WEUI_QA_STAGE_FROM="${WEUI_QA_STAGE_FROM:-}" \
     WEUI_QA_STAGE_TO="${WEUI_QA_STAGE_TO:-}" \
-    EMULATE_READER_W=536 \
-    EMULATE_READER_H=724 \
+    EMULATE_READER_W="${WEUI_QA_EMULATE_W:-536}" \
+    EMULATE_READER_H="${WEUI_QA_EMULATE_H:-724}" \
     EMULATE_READER_DPI=300 \
     ./luajit ./reader.lua
 ) >"$qa_root/artifacts/koreader.log" 2>&1

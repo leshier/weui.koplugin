@@ -125,6 +125,8 @@ local zlibrary_list
 local zlibrary_details
 local zlibrary_credentials
 local zlibrary_download_complete
+local zlibrary_search
+local zlibrary_languages
 
 add("01-home", function()
     local Screen = require("device").screen
@@ -179,6 +181,14 @@ for _, spec in ipairs({
         while #settings_win._nav_stack > 1 do settings_win:_navPop() end
         settings_win:_navPush(spec[2])
         assert(settings_win:_navCurrent().id == spec[2])
+        if spec[2] == "about_settings" and os.getenv("WEUI_QA_LIVE_UPDATE") == "1" then
+            local release = require("weui_updater")._doFetch()
+            assert(type(release) == "table" and not release.error,
+                "live update check failed: " .. tostring(release and release.error))
+            assert(type(release.version) == "string" and release.version ~= "",
+                "live update check returned no version")
+            append_result("INFO", "update-source", "latest=" .. release.version)
+        end
     end)
 end
 
@@ -218,7 +228,30 @@ add("18-weread-offline", function()
     assert(offline_win and offline_win._name == "weui_win_offline_manager", "offline manager did not open")
 end, { cleanup = function() safe_close_sui(offline_win); offline_win = nil end })
 
-add("19-zlibrary-browse", function()
+add("19-zlibrary-search", function()
+    local zlib = assert(current_plugin()._zlibrary_plugin, "embedded Z-Library plugin missing")
+    require("zlibrary.ui").showSearchDialog(zlib, "三体")
+    zlibrary_search = top_widget()
+    assert(zlibrary_search, "Z-Library search dialog did not open")
+end, { cleanup = function()
+    safe_close(zlibrary_search)
+    safe_close(zlibrary_search)
+    zlibrary_search = nil
+end })
+
+add("20-zlibrary-languages", function()
+    local zlib = assert(current_plugin()._zlibrary_plugin, "embedded Z-Library plugin missing")
+    local Config = require("zlibrary.config")
+    Config.saveSetting(Config.SETTINGS_SEARCH_LANGUAGES_KEY, { "chinese", "english" })
+    require("zlibrary.ui").showLanguageSelectionDialog(zlib)
+    zlibrary_languages = top_widget()
+    assert(zlibrary_languages, "Z-Library language picker did not open")
+end, { cleanup = function()
+    safe_close(zlibrary_languages)
+    zlibrary_languages = nil
+end })
+
+add("21-zlibrary-browse", function()
     local zlib = assert(current_plugin()._zlibrary_plugin, "embedded Z-Library plugin missing")
     local Config = require("zlibrary.config")
     Config.getMultiSearchCache():insert("popular", {
@@ -232,7 +265,7 @@ add("19-zlibrary-browse", function()
     assert(zlibrary_list, "Z-Library browse page did not open")
 end, { wait = 1.0 })
 
-add("20-zlibrary-details", function()
+add("22-zlibrary-details", function()
     local zlib = assert(current_plugin()._zlibrary_plugin)
     local Ui = require("zlibrary.ui")
     zlibrary_details = Ui.showBookDetails(zlib, {
@@ -251,7 +284,7 @@ add("20-zlibrary-details", function()
     assert(zlibrary_details, "Z-Library details did not open")
 end, { wait = 1.0, cleanup = function() safe_close(zlibrary_details); zlibrary_details = nil end })
 
-add("21-zlibrary-credentials", function()
+add("23-zlibrary-credentials", function()
     local ok, err = require("weui_zlibrary_ui").openCredentials()
     assert(ok, tostring(err))
     zlibrary_credentials = top_widget()
@@ -263,7 +296,7 @@ end, { cleanup = function()
     zlibrary_list = nil
 end })
 
-add("22-zlibrary-download-complete", function()
+add("24-zlibrary-download-complete", function()
     require("zlibrary.ui").confirmOpenBook(
         "墨水屏阅读体验设计.epub",
         function() end,
@@ -278,12 +311,12 @@ end, { cleanup = function()
     zlibrary_download_complete = nil
 end })
 
-add("23-reader", function()
+add("25-reader", function()
     local ReaderUI = require("apps/reader/readerui")
     ReaderUI:showReader(library .. "/欢迎使用 WeUI.txt")
 end, { wait = 3.0 })
 
-add("24-sleep-screen", function()
+add("26-sleep-screen", function()
     assert(require("apps/reader/readerui").instance, "reader not active before screensaver")
     local Screen = require("device").screen
     append_result("INFO", "sleep-before", table.concat({
@@ -297,7 +330,7 @@ add("24-sleep-screen", function()
     append_result("INFO", "sleep-after", table.concat({
         Screen:getWidth(), Screen:getHeight(), Screen:getRotationMode(),
     }, "x"))
-    UIManager:scheduleIn(0.8, function() trace_edge_widgets("24-sleep-screen") end)
+    UIManager:scheduleIn(0.8, function() trace_edge_widgets("26-sleep-screen") end)
 end, {
     wait = 1.0,
     cleanup = function()
@@ -308,7 +341,7 @@ end, {
     end,
 })
 
-add("25-return-library", function()
+add("27-return-library", function()
     local ReaderUI = require("apps/reader/readerui")
     assert(ReaderUI.instance, "reader instance missing")
     ReaderUI.instance:onHome()

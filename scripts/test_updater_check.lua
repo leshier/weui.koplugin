@@ -57,7 +57,7 @@ end
 assert(updater._httpGet("https://raw.githubusercontent.com/meta.lua")
     == 'version = "1.4.2"')
 assert(#requests == 1 and requests[1].proxy == false)
-assert(timeout_calls[1][1] == 20 and timeout_calls[1][2] == 60)
+assert(timeout_calls[1][1] == 10 and timeout_calls[1][2] == 20)
 
 -- Proxy checks follow every HTTPS redirect through the selected transport.
 requests = {}
@@ -86,5 +86,25 @@ assert(updater._httpGet("https://raw.githubusercontent.com/meta.lua")
 assert(#requests == 2, "both version-check hops should use the proxy")
 assert(requests[1].proxy and requests[2].proxy)
 assert(requests[2].url == "https://mirror.example/meta.lua")
+
+-- Default checks do not depend on raw.githubusercontent.com. If the Releases API is blocked,
+-- they immediately fall back to the jsDelivr copy of _meta.lua.
+settings.weui_upd_use_zlibrary_proxy = false
+requests = {}
+http.request = function(request)
+    requests[#requests + 1] = { url = request.url, proxy = false }
+    if request.url:find("api.github.com", 1, true) then
+        return 1, 503, {}, "Service Unavailable"
+    end
+    assert(request.url:find("fastly.jsdelivr.net", 1, true),
+        "first metadata fallback must use the Fastly jsDelivr edge")
+    request.sink('version = "9.8.7"')
+    request.sink(nil)
+    return 1, 200, {}, "OK"
+end
+local release = updater._doFetch()
+assert(release.version == "9.8.7")
+assert(release.download_url:find("/releases/download/v9.8.7/weui.koplugin.zip", 1, true))
+assert(#requests == 2, "API failure should advance to the first CDN without retrying")
 
 print("UPDATER_CHECK_OK")

@@ -47,9 +47,12 @@ local DOWNLOAD_BLOCK_TIMEOUT = 30
 local DOWNLOAD_TOTAL_TIMEOUT = 180
 local DOWNLOAD_ATTEMPTS = 2
 local MAX_DOWNLOAD_REDIRECTS = 8
-local CHECK_BLOCK_TIMEOUT = 20
-local CHECK_TOTAL_TIMEOUT = 60
-local CHECK_ATTEMPTS = 2
+-- A version response is only a few kilobytes. Long per-host waits made a blocked GitHub host
+-- hold the About page for minutes before any fallback was tried, so checks use a short bounded
+-- attempt per source instead. Downloads retain their larger budgets below.
+local CHECK_BLOCK_TIMEOUT = 10
+local CHECK_TOTAL_TIMEOUT = 20
+local CHECK_ATTEMPTS = 1
 
 local _DEFAULT_API_URL = string.format(
     "https://api.github.com/repos/%s/%s/releases/latest",
@@ -62,6 +65,19 @@ local _DEFAULT_API_URL = string.format(
 -- raw.githubusercontent.com is not subject to that API rate limit.
 local _RAW_META_URL = string.format(
     "https://raw.githubusercontent.com/%s/%s/main/_meta.lua",
+    GITHUB_OWNER, GITHUB_REPO
+)
+
+-- Mainland networks often reach api.github.com or a jsDelivr edge while raw.githubusercontent.com
+-- and github.com time out. These are alternate delivery paths for this repository's public
+-- metadata, not alternate update authorities: the package still comes from the tagged GitHub
+-- release and its fixed asset name.
+local _FASTLY_META_URL = string.format(
+    "https://fastly.jsdelivr.net/gh/%s/%s@main/_meta.lua",
+    GITHUB_OWNER, GITHUB_REPO
+)
+local _JSDELIVR_META_URL = string.format(
+    "https://cdn.jsdelivr.net/gh/%s/%s@main/_meta.lua",
     GITHUB_OWNER, GITHUB_REPO
 )
 
@@ -141,6 +157,25 @@ local function _gs()
     return ok and gs or nil
 end
 
+-- Automatic fallback is deliberately narrower than the explicit updater-proxy switch. It is
+-- available only when the user has enabled and configured the Z-Library proxy; merely having an
+-- old proxy address stored is not permission to use it. The explicit switch continues to force
+-- every update request through that proxy with no direct attempt.
+local function _canAutoFallbackToProxy()
+    local ok_store, Store = pcall(require, "weui_store")
+    if not ok_store or not Store or type(Store.isTrue) ~= "function" then
+        return false
+    end
+    local ok_enabled, enabled = pcall(Store.isTrue, Store, "weui_zlibrary_proxy_enabled")
+    if not ok_enabled or not enabled then return false end
+    local ok_proxy, Proxy = pcall(require, "weui_zlibrary_proxy")
+    if not ok_proxy or not Proxy or type(Proxy._readConfig) ~= "function" then
+        return false
+    end
+    local ok_config, config = pcall(Proxy._readConfig)
+    return ok_config and type(config) == "table"
+end
+
 -- ---------------------------------------------------------------------------
 -- Persistence
 -- ---------------------------------------------------------------------------
@@ -196,12 +231,16 @@ end
 -- HTTP
 -- ---------------------------------------------------------------------------
 
-local function _httpGet(url)
+local function _httpGet(url, options)
+    options = options or {}
     local ok_su, socketutil = pcall(require, "socketutil")
     local http   = require("socket/http")
     local ltn12  = require("ltn12")
     local gs = _gs()
-    local use_proxy = gs and gs:readSetting(GS_USE_ZLIB_PROXY) == true
+    local use_proxy = options.use_proxy
+    if use_proxy == nil then
+        use_proxy = gs and gs:readSetting(GS_USE_ZLIB_PROXY) == true
+    end
 
     local function requestOnce(request_url)
         local chunks = {}
@@ -285,12 +324,13 @@ local function _httpGet(url)
     end
 
     local last_err
-    for attempt = 1, CHECK_ATTEMPTS do
+    local attempts = math.max(1, tonumber(options.attempts) or CHECK_ATTEMPTS)
+    for attempt = 1, attempts do
         local body, err = performAttempt()
         if body then return body end
         last_err = err
         logger.warn(string.format("weui updater: check attempt %d/%d failed: %s",
-            attempt, CHECK_ATTEMPTS, tostring(err)))
+            attempt, attempts, tostring(err)))
     end
     return nil, last_err or "update check failed"
 end
@@ -302,7 +342,7 @@ local function _httpGetToFile(url, dest_path)
     local socket = require("socket")
 
     local gs = _gs()
-    local use_proxy = gs and gs:readSetting(GS_USE_ZLIB_PROXY) == true
+    local force_proxy = gs and gs:readSetting(GS_USE_ZLIB_PROXY) == true
 
     local function requestOnce(request_url, follow_redirects)
         local fh, err_open = io.open(dest_path, "wb")
@@ -362,7 +402,7 @@ local function _httpGetToFile(url, dest_path)
         return code, headers, status or first
     end
 
-    local function performAttempt()
+    local function performAttempt(use_proxy)
         local request_url = url
         for redirect_count = 0, MAX_DOWNLOAD_REDIRECTS do
             local code, headers, status
@@ -405,14 +445,26 @@ local function _httpGetToFile(url, dest_path)
         return nil, "too many redirects"
     end
 
+    local transports = force_proxy and { true } or { false }
+    if not force_proxy and _canAutoFallbackToProxy() then
+        transports[#transports + 1] = true
+    end
+
     local last_err
-    for attempt = 1, DOWNLOAD_ATTEMPTS do
-        pcall(os.remove, dest_path)
-        local ok, err = performAttempt()
-        if ok then return true end
-        last_err = err
-        logger.warn(string.format("weui updater: download attempt %d/%d failed: %s",
-            attempt, DOWNLOAD_ATTEMPTS, tostring(err)))
+    for _, use_proxy in ipairs(transports) do
+        local transport_name = use_proxy and "proxy" or "direct"
+        for attempt = 1, DOWNLOAD_ATTEMPTS do
+            pcall(os.remove, dest_path)
+            local ok, err = performAttempt(use_proxy)
+            if ok then
+                logger.info("weui updater: package downloaded via " .. transport_name)
+                return true
+            end
+            last_err = err
+            logger.warn(string.format(
+                "weui updater: %s download attempt %d/%d failed: %s",
+                transport_name, attempt, DOWNLOAD_ATTEMPTS, tostring(err)))
+        end
     end
     pcall(os.remove, dest_path)
     return nil, last_err or "download failed"
@@ -589,32 +641,83 @@ end
 
 local function _doFetch()
     local api_url = _apiUrl()
-    if api_url ~= _DEFAULT_API_URL then
-        -- A custom API URL is configured: honour it via the GitHub Releases
-        -- API flow (JSON response, includes release notes).
-        local body, err = _httpGet(api_url)
-        if not body then return { error = err } end
-        local release, parse_err = _parseRelease(body)
-        if not release then return { error = "parse error: " .. tostring(parse_err) } end
-        return release
+    local custom_source = api_url ~= _DEFAULT_API_URL
+    local sources = custom_source and {
+        { label = "custom", url = api_url, kind = "release" },
+    } or {
+        -- The Releases API is authoritative and supplies notes plus the exact asset URL. A 403
+        -- (anonymous rate limit) is cheap to detect and immediately falls through to the CDNs.
+        { label = "github-api", url = _DEFAULT_API_URL, kind = "release" },
+        { label = "fastly-jsdelivr", url = _FASTLY_META_URL, kind = "meta" },
+        { label = "jsdelivr", url = _JSDELIVR_META_URL, kind = "meta" },
+    }
+
+    local gs = _gs()
+    local force_proxy = gs and gs:readSetting(GS_USE_ZLIB_PROXY) == true
+    local transports = force_proxy and { true } or { false }
+    if not force_proxy and _canAutoFallbackToProxy() then
+        transports[#transports + 1] = true
     end
 
-    -- Default flow: read the version from raw _meta.lua. This bypasses
-    -- api.github.com entirely, so its anonymous rate limit (60 req/h/IP,
-    -- which surfaces as HTTP 403) cannot block update checks. The asset
-    -- download URL is constructed from the tag scheme. Release notes are
-    -- not available in this flow; the update dialog omits "What's new".
-    local body, err = _httpGet(_RAW_META_URL)
-    if not body then return { error = err } end
-    local ver = _parseMetaVersion(body)
-    if not ver then return { error = "could not parse version from _meta.lua" } end
-    return {
-        version      = ver,
-        download_url = _assetUrlForVersion(ver),
-        notes        = nil,
-        html_url     = string.format("https://github.com/%s/%s/releases/tag/v%s",
-                                     GITHUB_OWNER, GITHUB_REPO, ver),
-    }
+    local errors = {}
+    for _, use_proxy in ipairs(transports) do
+        local transport_name = use_proxy and "proxy" or "direct"
+        for _, source in ipairs(sources) do
+            local body, err = _httpGet(source.url, { use_proxy = use_proxy, attempts = 1 })
+            if body then
+                if source.kind == "release" then
+                    local release, parse_err = _parseRelease(body)
+                    if release and release.version then
+                        logger.info("weui updater: version source " .. source.label
+                            .. " via " .. transport_name)
+                        return release
+                    end
+                    err = "parse error: " .. tostring(parse_err)
+                else
+                    local ver = _parseMetaVersion(body)
+                    if ver then
+                        logger.info("weui updater: version source " .. source.label
+                            .. " via " .. transport_name)
+                        return {
+                            version      = ver,
+                            download_url = _assetUrlForVersion(ver),
+                            notes        = nil,
+                            html_url     = string.format(
+                                "https://github.com/%s/%s/releases/tag/v%s",
+                                GITHUB_OWNER, GITHUB_REPO, ver),
+                        }
+                    end
+                    err = "version missing from metadata"
+                end
+            end
+            errors[#errors + 1] = source.label .. "/" .. transport_name
+                .. ": " .. tostring(err or "unknown error")
+        end
+
+        -- raw.githubusercontent.com is useful through a configured proxy, but it is omitted from
+        -- direct mode because on affected mainland networks it consumes the whole timeout without
+        -- returning a status. Trying it here gives proxy users an independent final source.
+        if use_proxy and not custom_source then
+            local body, err = _httpGet(_RAW_META_URL, { use_proxy = true, attempts = 1 })
+            local ver = body and _parseMetaVersion(body) or nil
+            if ver then
+                logger.info("weui updater: version source github-raw via proxy")
+                return {
+                    version      = ver,
+                    download_url = _assetUrlForVersion(ver),
+                    notes        = nil,
+                    html_url     = string.format(
+                        "https://github.com/%s/%s/releases/tag/v%s",
+                        GITHUB_OWNER, GITHUB_REPO, ver),
+                }
+            end
+            errors[#errors + 1] = "github-raw/proxy: "
+                .. tostring(err or "version missing from metadata")
+        end
+    end
+
+    logger.warn("weui updater: all version sources failed: " .. table.concat(errors, "; "))
+    return { error = _("All update sources failed. Please check the network or proxy settings.") }
 end
 
 -- ---------------------------------------------------------------------------
@@ -959,5 +1062,6 @@ end
 M._httpGet = _httpGet
 M._httpGetToFile = _httpGetToFile
 M._currentVersion = _currentVersion
+M._doFetch = _doFetch
 
 return M

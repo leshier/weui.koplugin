@@ -1162,6 +1162,9 @@ msgstr "应用包时出错："
 msgid "Error checking for updates."
 msgstr "检查更新时出错。"
 
+msgid "All update sources failed. Please check the network or proxy settings."
+msgstr "所有更新源均不可用，请检查网络或代理设置。"
+
 #: sui_updater.lua:626
 msgid "Error checking for updates: "
 msgstr "检查更新时出错："

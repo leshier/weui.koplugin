@@ -952,6 +952,9 @@ msgstr "超时设置"
 msgid "Email Address"
 msgstr "电子邮箱"
 
+msgid "Enter email address"
+msgstr "请输入电子邮箱"
+
 msgid "Password"
 msgstr "密码"
 
@@ -963,6 +966,21 @@ msgstr "设置并验证"
 
 msgid "Please fill in all fields"
 msgstr "请填写所有字段"
+
+msgid "Not available"
+msgstr "暂不可下载"
+
+#, lua-format
+msgid "%s by %s%s"
+msgstr "%s，作者：%s%s"
+
+#, lua-format
+msgid "%s: %s (%s)"
+msgstr "%s：%s（%s）"
+
+#, lua-format
+msgid "%s: %s"
+msgstr "%s：%s"
 
 #~ msgid "Verify credentials"
 #~ msgstr "验证凭证"

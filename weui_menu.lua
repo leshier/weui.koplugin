@@ -4422,9 +4422,12 @@ WeUIPlugin.addToMainMenu = function(self, menu_items)
     local function makeAboutMenuItems(ctx_menu)
         local _plugin_dir = (debug.getinfo(1, "S").source or ""):match("^@?(.+)/[^/]+$")
         local ok, Meta = pcall(dofile, _plugin_dir .. "/_meta.lua")
-        if not ok or type(Meta) ~= "table" or Meta.name ~= "weui" then
+        -- KOReader plugin metadata identifies the plugin through `fullname`; `name` is not a
+        -- required _meta.lua field. Requiring Meta.name here discarded our valid metadata and
+        -- made the About page render both values as "?".
+        if not ok or type(Meta) ~= "table" or not Meta.version then
             local rok, rmeta = pcall(require, "_meta")
-            Meta = (rok and type(rmeta) == "table" and rmeta.name == "weui" and rmeta) or {}
+            Meta = (rok and type(rmeta) == "table" and rmeta.version and rmeta) or {}
         end
         return {
             {

@@ -25,6 +25,7 @@ local logger = require("logger")
 local util = require("util")
 local T = require("zlibrary.gettext")
 local Cache = require("zlibrary.cache")
+local Config = require("zlibrary.config")
 
 local function applyRoundedCorners(frame_widget, border_size)
     local r = math.floor(Screen:scaleBySize(6))
@@ -450,7 +451,7 @@ function BookDetailsDialog:_generateMetaLines()
     end
     local tech_parts = {}
     if self.book.lang and self.book.lang ~= "N/A" then
-        table.insert(tech_parts, self.book.lang)
+        table.insert(tech_parts, Config.getLanguageDisplayName(self.book.lang, self.book.lang))
     end
     if self.book.size and self.book.size ~= "N/A" then
         table.insert(tech_parts, self.book.size)
@@ -562,7 +563,8 @@ function BookDetailsDialog:_buildButtons()
             }})
         else
             table.insert(dialog_buttons, {{
-                text = "\u{F019}  " .. string.format("%s: %s (Not available)", T("Format"), self.book.format:upper()),
+                text = "\u{F019}  " .. string.format(T("%s: %s (%s)"), T("Format"),
+                    self.book.format:upper(), T("Not available")),
                 align = "left", enabled = false
             }})
         end

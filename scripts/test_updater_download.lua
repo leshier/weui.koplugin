@@ -93,4 +93,34 @@ assert(#requests == 2, "proxy download should follow one redirect")
 assert(requests[2]:match("^https://release%-assets%.githubusercontent%.com/"))
 os.remove(dest)
 
+-- With the updater switch off, a direct failure may fall back to an enabled and configured
+-- Z-Library proxy. This is the mainland-network recovery path; it never applies when that proxy
+-- is disabled.
+settings.weui_upd_use_zlibrary_proxy = false
+package.loaded.weui_store = {
+    isTrue = function(_, key) return key == "weui_zlibrary_proxy_enabled" end,
+}
+requests = {}
+local inside_proxy = false
+package.loaded.weui_zlibrary_proxy._proxyHttpRequest = function(request, _, base_request)
+    inside_proxy = true
+    local result = { base_request(request) }
+    inside_proxy = false
+    return unpack(result)
+end
+http.request = function(request)
+    requests[#requests + 1] = { url = request.url, proxy = inside_proxy }
+    if not inside_proxy then return nil, "timeout" end
+    request.sink("automatic-proxy-ok")
+    request.sink(nil)
+    return 1, 200, {}, "OK"
+end
+assert(updater._httpGetToFile("https://github.com/release.zip", dest))
+fh = assert(io.open(dest, "rb"))
+assert(fh:read("*a") == "automatic-proxy-ok")
+fh:close()
+assert(#requests == 3, "direct retries should be followed by one automatic proxy attempt")
+assert(not requests[1].proxy and not requests[2].proxy and requests[3].proxy)
+os.remove(dest)
+
 print("UPDATER_DOWNLOAD_OK")
