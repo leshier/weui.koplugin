@@ -73,11 +73,11 @@ local _RAW_META_URL = string.format(
 -- metadata, not alternate update authorities: the package still comes from the tagged GitHub
 -- release and its fixed asset name.
 local _FASTLY_META_URL = string.format(
-    "https://fastly.jsdelivr.net/gh/%s/%s@main/_meta.lua",
+    "https://fastly.jsdelivr.net/gh/%s/%s@latest/_meta.lua",
     GITHUB_OWNER, GITHUB_REPO
 )
 local _JSDELIVR_META_URL = string.format(
-    "https://cdn.jsdelivr.net/gh/%s/%s@main/_meta.lua",
+    "https://cdn.jsdelivr.net/gh/%s/%s@latest/_meta.lua",
     GITHUB_OWNER, GITHUB_REPO
 )
 

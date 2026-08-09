@@ -98,6 +98,8 @@ http.request = function(request)
     end
     assert(request.url:find("fastly.jsdelivr.net", 1, true),
         "first metadata fallback must use the Fastly jsDelivr edge")
+    assert(request.url:find("@latest/_meta.lua", 1, true),
+        "CDN fallback must follow the latest release tag instead of a stale branch cache")
     request.sink('version = "9.8.7"')
     request.sink(nil)
     return 1, 200, {}, "OK"
