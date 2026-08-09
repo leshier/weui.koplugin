@@ -604,8 +604,26 @@ msgstr "无法创建下载目录：%s"
 msgid "Could not open reader UI."
 msgstr "无法打开阅读器界面。"
 
-msgid "Download failed: Unknown error"
-msgstr "下载失败：未知错误"
+msgid "Download failed without an error message."
+msgstr "下载失败，但没有返回错误信息。"
+
+msgid "Download link request returned no result."
+msgstr "获取下载链接时没有返回结果。"
+
+msgid "The server returned an empty download link."
+msgstr "服务器返回了空的下载链接。"
+
+msgid "Download request returned no result."
+msgstr "下载请求没有返回结果。"
+
+msgid "Download request returned an invalid result."
+msgstr "下载请求返回了无效结果。"
+
+msgid "Download process error"
+msgstr "下载进程错误"
+
+msgid "Download process ended unexpectedly. Please retry."
+msgstr "下载进程意外结束，请重试。"
 
 msgid "Book download"
 msgstr "书籍下载"

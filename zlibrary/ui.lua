@@ -861,9 +861,15 @@ function Ui.showRetryErrorDialog(err_msg, operation_name, retry_callback, cancel
     -- A mirror behind a bot check will answer the same way however often it is asked, so Retry
     -- alone is useless here. Another server is the only fix, so surface that button.
     local is_blocked = string.find(error_string, Api.BLOCKED_TEXT, 1, true) ~= nil
+    local is_download_process_error = operation_key == "download" and (
+        string.find(error_string, T("Download process error"), 1, true) ~= nil or
+        string.find(error_string, T("Download process ended unexpectedly. Please retry."), 1, true) ~= nil or
+        string.find(error_string, T("Download request returned an invalid result."), 1, true) ~= nil
+    )
     local offer_discover = (is_timeout or is_dns_error or is_blocked) and true or nil
 
-    if is_http_400 or is_timeout or is_network_error or is_dns_error or is_blocked then
+    if is_http_400 or is_timeout or is_network_error or is_dns_error or is_blocked
+            or is_download_process_error then
         local retry_message
         if is_timeout then
             local timeout_info = ""
@@ -889,6 +895,9 @@ function Ui.showRetryErrorDialog(err_msg, operation_name, retry_callback, cancel
             -- than unhelpful: it replaced this with "due to a temporary issue", and this is the
             -- one failure here that is not temporary.
             retry_message = error_string
+        elseif is_download_process_error then
+            retry_message = string.format(T("Could not complete \"%s\" due to a temporary issue. Would you like to retry?"), operation_name)
+                .. "\n\n" .. error_string
         else
             retry_message = string.format(T("Could not complete \"%s\" due to a temporary issue. Would you like to retry?"), operation_name)
         end

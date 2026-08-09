@@ -819,9 +819,32 @@ msgstr ""
 msgid "Could not open reader UI."
 msgstr ""
 
-#: zlibrary/download.lua:261 zlibrary/download.lua:324
-#: zlibrary/download.lua:336 zlibrary/download.lua:342
-msgid "Download failed: Unknown error"
+#: zlibrary/download.lua
+msgid "Download failed without an error message."
+msgstr ""
+
+#: zlibrary/download.lua
+msgid "Download link request returned no result."
+msgstr ""
+
+#: zlibrary/download.lua
+msgid "The server returned an empty download link."
+msgstr ""
+
+#: zlibrary/download.lua
+msgid "Download request returned no result."
+msgstr ""
+
+#: zlibrary/download.lua
+msgid "Download request returned an invalid result."
+msgstr ""
+
+#: zlibrary/download.lua zlibrary/ui.lua
+msgid "Download process error"
+msgstr ""
+
+#: zlibrary/download.lua zlibrary/ui.lua
+msgid "Download process ended unexpectedly. Please retry."
 msgstr ""
 
 #: zlibrary/download.lua:284 zlibrary/ui.lua:1133

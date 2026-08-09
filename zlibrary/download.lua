@@ -43,6 +43,16 @@ local function _loggableUrl(url)
     })
 end
 
+-- Error strings can contain a signed download URL in a LuaSocket traceback.
+-- Keep the useful cause while removing query parameters (tokens, expiry and
+-- account-adjacent signatures) before showing or logging it.
+local function _safeErrorText(err)
+    local text = tostring(err or "")
+    text = text:gsub("(https?://[^%s%?]+)%?[^%s]+", "%1?<redacted>")
+    if #text > 800 then text = text:sub(1, 797) .. "..." end
+    return text ~= "" and text or T("Download failed without an error message.")
+end
+
 local function _usableFormat(format)
     if type(format) ~= "string" then
         return nil
@@ -186,27 +196,40 @@ function Download.run(self, book)
     -- a forked child so the UI loop keeps running and the user can tap to cancel: the child cannot yield
     -- out of socket.http (it sits behind socket.protect's C frame), but it does not need to -- blocking
     -- is fine over there, and Trapper yields in the parent while it waits.
+    local function performDownload(user_session, referer_url)
+        logger.info(string.format("Zlibrary:downloadBook - Fetching download link from endpoint for book ID: %s", book.id))
+        local link_result = Api.getDownloadLink(user_session and user_session.user_id,
+            user_session and user_session.user_key, book.id, book.hash)
+
+        if type(link_result) ~= "table" then
+            return { success = false, error = T("Download link request returned no result.") }
+        end
+        if link_result.error then
+            return { success = false, error = link_result.error }
+        end
+        if type(link_result.download_link) ~= "string" or link_result.download_link == "" then
+            return { success = false, error = T("The server returned an empty download link.") }
+        end
+
+        logger.info(string.format("Zlibrary:downloadBook - Got download link from endpoint: %s", _loggableUrl(link_result.download_link)))
+
+        -- No progress callback: in a child it cannot reach the parent's dialog;
+        -- in the low-memory fallback below the UI is temporarily blocking.
+        local result = Api.downloadBook(link_result.download_link, target_filepath,
+            user_session and user_session.user_id, user_session and user_session.user_key,
+            referer_url, nil)
+        if type(result) ~= "table" then
+            return { success = false, error = T("Download request returned no result.") }
+        end
+        return result
+    end
+
     local function runDownloadInSubprocess(user_session, referer_url)
         return Trapper:dismissableRunInSubprocess(function()
             -- This process exists only to return a result table, and it shares the cache file with the
             -- parent. Nothing it writes there can help, and some of it would destroy the parent's copy.
             Config.disableRuntimeCacheWrites()
-
-            logger.info(string.format("Zlibrary:downloadBook - Fetching download link from endpoint for book ID: %s", book.id))
-            local link_result = Api.getDownloadLink(user_session and user_session.user_id,
-                user_session and user_session.user_key, book.id, book.hash)
-
-            if link_result.error then
-                return { success = false, error = link_result.error }
-            end
-
-            logger.info(string.format("Zlibrary:downloadBook - Got download link from endpoint: %s", _loggableUrl(link_result.download_link)))
-
-            -- No progress callback: it would run in this process and could not reach the parent's
-            -- dialog. The parent watches the temp file instead.
-            return Api.downloadBook(link_result.download_link, target_filepath,
-                user_session and user_session.user_id, user_session and user_session.user_key,
-                referer_url, nil)
+            return performDownload(user_session, referer_url)
         end, false) -- false: an invisible trap widget that swallows the dismissing tap
     end
 
@@ -219,6 +242,8 @@ function Download.run(self, book)
 
         -- The wrap below routes any result carrying .error to on_error_download, so api_result never
         -- has one here; on_error_download owns every failure, including the auth retry.
+        local on_error_download
+
         local function on_success_download(api_result)
             Ui.closeMessage(loading_msg)
             if api_result and api_result.success then
@@ -256,13 +281,16 @@ function Download.run(self, book)
                 end
             )
             else
-                -- Only reachable when the task returned no result at all; a result carrying .error
-                -- went to on_error_download instead.
-                Ui.showErrorMessage((api_result and api_result.message) or T("Download failed: Unknown error"))
+                -- Keep malformed/unexpected results on the same diagnostic
+                -- path as ordinary failures instead of erasing their cause.
+                return on_error_download((type(api_result) == "table"
+                    and (api_result.error or api_result.message))
+                    or T("Download request returned an invalid result."))
             end
         end
 
-        local function on_error_download(err_msg)
+        on_error_download = function(err_msg)
+            err_msg = _safeErrorText(err_msg)
             if retry_on_auth_error and Api.isAuthenticationError(err_msg) then
                 Ui.closeMessage(loading_msg)
                 self:login(function(login_ok)
@@ -303,7 +331,16 @@ function Download.run(self, book)
             -- Trapper polls the child at up to one second, so a cancel can land after the child has
             -- already renamed the finished book into place. Remember what was there first, so that
             -- case is reported as the success it is instead of stranding a complete book.
-            local target_before = lfs.attributes(target_filepath, "modification")
+            local target_before = lfs.attributes(target_filepath)
+            local function targetChanged()
+                local target_after = lfs.attributes(target_filepath)
+                if not target_after then return false end
+                if not target_before then return true end
+                return target_after.modification ~= target_before.modification
+                    or target_after.change ~= target_before.change
+                    or target_after.size ~= target_before.size
+                    or target_after.ino ~= target_before.ino
+            end
 
             -- Trapper returns false both for "user dismissed" and for "fork failed". A dismiss cannot
             -- happen without at least one yield, and a fork failure never reaches the poll loop, so
@@ -319,28 +356,42 @@ function Download.run(self, book)
             stop_poll()
 
             if not ok then
-                logger.err("Zlibrary:downloadBook - Download failed: " .. tostring(completed))
-                Ui.closeMessage(loading_msg)
-                Ui.showErrorMessage(T("Download failed: Unknown error"))
-                return
+                local reason = T("Download process error") .. ": " .. _safeErrorText(completed)
+                logger.err("Zlibrary:downloadBook - " .. reason)
+                return on_error_download(reason)
             end
 
             if not completed then
-                if lfs.attributes(target_filepath, "modification") ~= target_before then
+                if targetChanged() then
                     -- The rename beat the kill; the book is whole.
                     return on_success_download({ success = true })
                 end
-                Api.discardDownloadTempFile(target_filepath)
-                Ui.closeMessage(loading_msg)
-                Ui.showInfoMessage(yielded and T("Download cancelled.")
-                    or T("Download failed: Unknown error"))
-                return
+                if yielded then
+                    Api.discardDownloadTempFile(target_filepath)
+                    Ui.closeMessage(loading_msg)
+                    Ui.showInfoMessage(T("Download cancelled."))
+                    return
+                end
+
+                -- ffiutil.runInSubProcess can fail under temporary memory or
+                -- process pressure. No child ran, so it is safe to perform the
+                -- request once in-process rather than reporting an invented
+                -- unknown error. This mirrors AsyncHelper.runCancellable.
+                logger.warn("Zlibrary:downloadBook - subprocess failed to start, falling back to in-process download")
+                local fallback_ok, fallback_result = pcall(performDownload,
+                    user_session, referer_url)
+                if not fallback_ok then
+                    return on_error_download(T("Download process error") .. ": "
+                        .. _safeErrorText(fallback_result))
+                end
+                api_result = fallback_result
             end
 
             if not api_result then
-                Ui.closeMessage(loading_msg)
-                Ui.showErrorMessage(T("Download failed: Unknown error"))
-                return
+                if targetChanged() then
+                    return on_success_download({ success = true })
+                end
+                return on_error_download(T("Download process ended unexpectedly. Please retry."))
             end
             if api_result.error then
                 return on_error_download(api_result.error)

@@ -78,6 +78,25 @@ local function _safeTrim(value, default)
     return trimmed ~= "" and trimmed or default
 end
 
+-- Keep signed query parameters (download tokens, expiry values and similar
+-- credentials) out of crash.log while retaining enough URL context to debug
+-- the route and failing host.
+local function _loggableUrl(value)
+    local parsed = socket_url.parse(type(value) == "string" and value or "")
+    if not (parsed and parsed.scheme and parsed.host) then return "<unparsable>" end
+    return socket_url.build({
+        scheme = parsed.scheme,
+        host = parsed.host,
+        port = parsed.port,
+        path = parsed.path,
+    })
+end
+
+local function _redactUrlQueries(value)
+    local text = tostring(value or "")
+    return text:gsub("(https?://[^%s%?]+)%?[^%s]+", "%1?<redacted>")
+end
+
 -- A cover is fetched straight from this URL, so it has to be absolute. z-library returns the relative
 -- placeholder "/img/cover-not-exists.png" for books with no cover; that parses to no host, so trying
 -- to download it fails at once with "invalid host" and then retries the whole way through the cover
@@ -395,7 +414,7 @@ local function _extractErrorFromJsonBody(body)
 end
 
 function Api.makeHttpRequest(options)
-    logger.dbg(string.format("Zlibrary:Api.makeHttpRequest - START - URL: %s, Method: %s", options.url, options.method or "GET"))
+    logger.dbg(string.format("Zlibrary:Api.makeHttpRequest - START - URL: %s, Method: %s", _loggableUrl(options.url), options.method or "GET"))
 
     local response_body_table = {}
     local result = { body = nil, status_code = nil, error = nil, headers = nil }
@@ -459,7 +478,7 @@ function Api.makeHttpRequest(options)
         redirect = options.redirect or false,
     }
 
-    logger.dbg(string.format("Zlibrary:Api.makeHttpRequest - Request Params: URL: %s, Method: %s, Timeout: %s", request_params.url, request_params.method, tostring(options.timeout)))
+    logger.dbg(string.format("Zlibrary:Api.makeHttpRequest - Request Params: URL: %s, Method: %s, Timeout: %s", _loggableUrl(request_params.url), request_params.method, tostring(options.timeout)))
 
     start_time = time.now()
     local req_ok, r_val, r_code, r_headers_tbl, r_status_str = pcall(http.request, request_params)
@@ -472,10 +491,10 @@ function Api.makeHttpRequest(options)
     end
 
     logger.dbg(string.format("Zlibrary:Api.makeHttpRequest - pcall result: ok=%s, r_val=%s (type %s), r_code=%s (type %s), r_headers_tbl type=%s, r_status_str=%s",
-        tostring(req_ok), tostring(r_val), type(r_val), tostring(r_code), type(r_code), type(r_headers_tbl), tostring(r_status_str)))
+        tostring(req_ok), _redactUrlQueries(r_val), type(r_val), _redactUrlQueries(r_code), type(r_code), type(r_headers_tbl), _redactUrlQueries(r_status_str)))
 
     if not req_ok then
-        local error_msg = tostring(r_val)
+        local error_msg = _redactUrlQueries(r_val)
         if string.find(error_msg, "timeout") or
            string.find(error_msg, "wantread") or
            string.find(error_msg, "closed") or
@@ -487,7 +506,7 @@ function Api.makeHttpRequest(options)
         end
         logger.err(string.format(
             "Zlibrary:Api.makeHttpRequest - END (pcall error) - %s %s - raw=[%s] elapsed=%dms first_byte=%s - Error: %s",
-            tostring(request_params.method), tostring(options.url),
+            tostring(request_params.method), _loggableUrl(options.url),
             error_msg, result.elapsed or -1,
             first_byte_ms and (first_byte_ms .. "ms") or "none", result.error))
         return result
@@ -510,7 +529,7 @@ function Api.makeHttpRequest(options)
         if Config.clearCacheRealUrlIfPinned(options.url) then
             logger.info(string.format(
                 "Zlibrary:Api.makeHttpRequest - Dropped cached redirect target; it failed: %s (status: %s)",
-                tostring(options.url), tostring(result.status_code)))
+                _loggableUrl(options.url), tostring(result.status_code)))
         end
     end
 
@@ -537,7 +556,7 @@ function Api.makeHttpRequest(options)
             options._retried = true
             logger.info(string.format(
                 "Zlibrary:Api.makeHttpRequest - stalled with no response after %dms, retrying once - %s %s",
-                result.elapsed or -1, tostring(request_params.method), tostring(options.url)))
+                result.elapsed or -1, tostring(request_params.method), _loggableUrl(options.url)))
             return Api.makeHttpRequest(options)
         end
 
@@ -559,7 +578,7 @@ function Api.makeHttpRequest(options)
         end
         logger.err(string.format(
             "Zlibrary:Api.makeHttpRequest - END (Invalid response code type) - %s %s - transport_error=[%s] (type %s) elapsed=%dms first_byte=%s - Error: %s",
-            tostring(request_params.method), tostring(options.url),
+            tostring(request_params.method), _loggableUrl(options.url),
             status_str, type(result.status_code), result.elapsed or -1,
             first_byte_ms and (first_byte_ms .. "ms") or "none", result.error))
         return result
@@ -609,24 +628,24 @@ function Api.makeHttpRequest(options)
                 options._redirect_seen = seen
             end
             if seen[redir_res.real_url] and not learned_cookies then
-                result.error = string.format("%s (%s)", T("Too many redirects"), tostring(redir_res.real_url))
+                result.error = string.format("%s (%s)", T("Too many redirects"), _loggableUrl(redir_res.real_url))
                 logger.err(string.format(
                     "Zlibrary:Api.makeHttpRequest - Redirect loop: %s was already requested, not following it again",
-                    tostring(redir_res.real_url)))
+                    _loggableUrl(redir_res.real_url)))
                 return result
             end
             seen[redir_res.real_url] = true
 
             local hops = (options._redirect_hops or 0) + 1
             if hops > MAX_REDIRECT_HOPS then
-                result.error = string.format("%s (%s)", T("Too many redirects"), tostring(options.url))
+                result.error = string.format("%s (%s)", T("Too many redirects"), _loggableUrl(options.url))
                 logger.err(string.format(
                     "Zlibrary:Api.makeHttpRequest - Redirect chain exceeded %d hops, giving up at %s",
-                    MAX_REDIRECT_HOPS, tostring(options.url)))
+                    MAX_REDIRECT_HOPS, _loggableUrl(options.url)))
                 return result
             end
             logger.info(string.format("Zlibrary:Api.makeHttpRequest - Following %s: %s -> %s (hop %d)",
-                tostring(result.status_code), tostring(options.url), tostring(redir_res.real_url), hops))
+                tostring(result.status_code), _loggableUrl(options.url), _loggableUrl(redir_res.real_url), hops))
             options._redirect_hops = hops
             _applyRedirectMethod(options, result.status_code)
             options.url = redir_res.real_url
@@ -651,7 +670,7 @@ function Api.makeHttpRequest(options)
                     T("Try a different Z-library server."))
                 logger.err(string.format(
                     "Zlibrary:Api.makeHttpRequest - %s answered a bot-check page (status %s), not the API",
-                    tostring(options.url), tostring(result.status_code)))
+                    _loggableUrl(options.url), tostring(result.status_code)))
             elseif json_error then
                 result.error = json_error
             else
@@ -669,7 +688,7 @@ function Api.makeHttpRequest(options)
             T("Try a different Z-library server."))
         logger.err(string.format(
             "Zlibrary:Api.makeHttpRequest - %s answered a bot-check page with status %s, not the API",
-            tostring(options.url), tostring(result.status_code)))
+            _loggableUrl(options.url), tostring(result.status_code)))
     end
 
     logger.dbg(string.format("Zlibrary:Api.makeHttpRequest - END - Status: %s, Headers found: %s, Error: %s",
@@ -903,7 +922,7 @@ function Api.discardDownloadTempFile(target_filepath)
 end
 
 function Api.downloadBook(download_url, target_filepath, user_id, user_key, referer_url, progress_callback)
-    logger.info(string.format("Zlibrary:Api.downloadBook - START - URL: %s, Target: %s", download_url, target_filepath))
+    logger.info(string.format("Zlibrary:Api.downloadBook - START - URL: %s, Target: %s", _loggableUrl(download_url), target_filepath))
 
     local result = { success = false, error = nil }
 
@@ -959,7 +978,7 @@ function Api.downloadBook(download_url, target_filepath, user_id, user_key, refe
     if content_type and string.find(string.lower(content_type), "text/html") then
         result.error = T("Download limit reached or file is an HTML page")
         discardTempFile()
-        logger.warn(string.format("Zlibrary:Api.downloadBook - END (HTML content detected) - URL: %s, Status: %s, Content-Type: %s", download_url, tostring(http_result.status_code), content_type))
+        logger.warn(string.format("Zlibrary:Api.downloadBook - END (HTML content detected) - URL: %s, Status: %s, Content-Type: %s", _loggableUrl(download_url), tostring(http_result.status_code), content_type))
         return result
     end
 

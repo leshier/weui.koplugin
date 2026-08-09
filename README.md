@@ -46,6 +46,11 @@ the book-details dialog has closed. The same window is always available from
 `We UI → Z-Library Account`. Detail actions use the same 24 px monochrome SVG
 icons and 40 px icon column as the WeRead download interface.
 
+Book downloads normally run in a cancellable subprocess. If Kindle cannot
+start that process under temporary memory pressure, WeUI safely falls back to
+an in-process download. Empty links, malformed results and crashed workers are
+reported separately with retry support instead of as an unknown error.
+
 #### Z-Library-only proxy
 
 Open `We UI → Z-Library Proxy` to route every Z-Library request through an
