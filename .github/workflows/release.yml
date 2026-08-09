@@ -20,21 +20,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Smoke syntax check (Lua 5.1)
-        continue-on-error: true
+      - name: Install test dependencies
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq lua5.1
-          # Syntax-only parse; never executes. Best-effort: LuaJIT-specific
-          # constructs may flag false positives, hence continue-on-error.
-          fail=0
-          while IFS= read -r f; do
-            luac5.1 -p "$f" || { echo "::warning::$f failed syntax check"; fail=1; }
-          done < <(find . -name '*.lua' -not -path './.git/*')
-          exit 0
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq luajit gettext
+
+      - name: Run release test gate
+        run: LUA_BIN=luajit scripts/run_tests.sh
 
       - name: Package WeUI
         run: |
-          set -e
+          set -euo pipefail
           # The repo root IS the complete plugin, including the embedded
           # zlibrary/ module. Extracting into koreader/plugins/ therefore
           # creates exactly one weui.koplugin/ directory.
@@ -56,10 +52,24 @@ jobs:
           ( cd stage && zip -rq weui.koplugin.zip weui.koplugin )
           test -f stage/weui.koplugin/LICENSE.zlibrary
           test -f stage/weui.koplugin/zlibrary/embedded_plugin.lua
+          test -f stage/weui.koplugin/zlibrary/runtime_locale.lua
           echo "::group::zip contents"
-          unzip -l stage/weui.koplugin.zip | head -40
+          unzip -l stage/weui.koplugin.zip | sed -n '1,40p'
           echo "::endgroup::"
           unzip -tq stage/weui.koplugin.zip
+          unzip -Z1 stage/weui.koplugin.zip > stage/zip-contents.txt
+          mapfile -t roots < <(sed -n 's#^\([^/]*\)/.*#\1#p' \
+            stage/zip-contents.txt | sort -u)
+          test "${#roots[@]}" -eq 1
+          test "${roots[0]}" = "weui.koplugin"
+          if grep -q '^weui.koplugin/scripts/' stage/zip-contents.txt; then
+            echo "test scripts leaked into release package" >&2
+            exit 1
+          fi
+          if grep -q 'zlibrary_credentials.lua$' stage/zip-contents.txt; then
+            echo "credentials leaked into release package" >&2
+            exit 1
+          fi
           ls -la stage/weui.koplugin.zip
 
       - name: Create release and upload asset

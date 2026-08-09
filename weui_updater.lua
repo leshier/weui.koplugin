@@ -68,6 +68,14 @@ local _RAW_META_URL = string.format(
     GITHUB_OWNER, GITHUB_REPO
 )
 
+-- jsDelivr's package index lists immutable repository tags and is usually
+-- reachable even when GitHub's API is not. Unlike the @latest alias it does
+-- not depend on an edge cache having refreshed _meta.lua already.
+local _JSDELIVR_PACKAGE_URL = string.format(
+    "https://data.jsdelivr.com/v1/package/gh/%s/%s",
+    GITHUB_OWNER, GITHUB_REPO
+)
+
 -- Mainland networks often reach api.github.com or a jsDelivr edge while raw.githubusercontent.com
 -- and github.com time out. These are alternate delivery paths for this repository's public
 -- metadata, not alternate update authorities: the package still comes from the tagged GitHub
@@ -143,9 +151,21 @@ local function _versionGt(a, b)
     return false
 end
 
+local function _normaliseReleaseVersion(value)
+    if type(value) ~= "string" then return nil end
+    return value:match("^v?(%d+%.%d+%.%d+[%w%.%+%-]*)$")
+end
+
 local function _isValidAssetUrl(url)
-    return type(url) == "string"
-        and url:find("/releases/download/", 1, true) ~= nil
+    if type(url) ~= "string" then return false end
+    local expected_prefix = string.format(
+        "https://github.com/%s/%s/releases/download/",
+        GITHUB_OWNER, GITHUB_REPO
+    )
+    if url:sub(1, #expected_prefix) ~= expected_prefix then return false end
+    local suffix = url:sub(#expected_prefix + 1)
+    local tag, asset = suffix:match("^([^/]+)/([^/]+)$")
+    return tag ~= nil and tag ~= "" and asset == ASSET_NAME
 end
 
 -- ---------------------------------------------------------------------------
@@ -477,7 +497,24 @@ end
 -- Parse the version field out of a raw _meta.lua body.
 -- _meta.lua contains:  version = "1.0.1"
 local function _parseMetaVersion(body)
-    return tostring(body):match('version%s*=%s*"([^"]+)"')
+    return _normaliseReleaseVersion(
+        tostring(body):match('version%s*=%s*"([^"]+)"')
+    )
+end
+
+local function _parseJsdelivrVersion(body)
+    local ok_j, json = pcall(require, "json")
+    if ok_j then
+        local ok_d, data = pcall(json.decode, body)
+        if ok_d and type(data) == "table" and type(data.versions) == "table" then
+            local version = data.versions[1]
+            version = _normaliseReleaseVersion(version)
+            if version then return version end
+        end
+    end
+    return _normaliseReleaseVersion(
+        tostring(body):match('"versions"%s*:%s*%[%s*"([^"]+)"')
+    )
 end
 
 -- Construct the release asset download URL for a given version.
@@ -510,7 +547,7 @@ local function _parseRelease(body)
                         :gsub('\\"', '"'):gsub("\\\\", "\\")
         end
         return {
-            version      = tag:match("v?(.*)"),
+            version      = _normaliseReleaseVersion(tag),
             download_url = download_url,
             notes        = (notes and notes ~= "") and notes or nil,
         }
@@ -523,6 +560,8 @@ local function _parseRelease(body)
 
     local tag = data.tag_name
     if not tag then return nil, "tag_name missing from API response" end
+    local version = _normaliseReleaseVersion(tag)
+    if not version then return nil, "invalid release version" end
 
     local download_url
     for _, asset in ipairs(data.assets or {}) do
@@ -543,7 +582,7 @@ local function _parseRelease(body)
     end
 
     return {
-        version      = tag:match("v?(.*)"),
+        version      = version,
         download_url = download_url,
         notes        = (notes and notes ~= "") and notes or nil,
         html_url     = data.html_url,
@@ -554,40 +593,81 @@ end
 -- Unzip
 -- ---------------------------------------------------------------------------
 
-local function _unzip(zip_path, dest_dir)
-    -- Prefer KOReader's bundled libarchive (ffi/archiver): it works on every
-    -- platform incl. Kindle, which ships no external `unzip` binary. Fall back
-    -- to the system `unzip` command only if libarchive is unavailable.
-    local ok_arch, Archiver = pcall(require, "ffi/archiver")
-    if ok_arch and Archiver and Archiver.Reader then
-        local ok_util, util = pcall(require, "util")
-        if ok_util and util and util.makePath then
-            util.makePath(dest_dir)
+local function _isSafeArchiveEntry(path, mode)
+    if type(path) ~= "string" or path == "" then
+        return false, "archive contains an empty path"
+    end
+    if path:find("%z") or path:find("\\", 1, true)
+            or path:sub(1, 1) == "/" or path:match("^%a:") then
+        return false, "archive contains an invalid path"
+    end
+    local plugin_root = "weui.koplugin"
+    if path ~= plugin_root and path:sub(1, #plugin_root + 1) ~= plugin_root .. "/" then
+        return false, "archive contains files outside weui.koplugin"
+    end
+    for segment in path:gmatch("[^/]+") do
+        if segment == "." or segment == ".." then
+            return false, "archive contains a traversal path"
         end
-        local arc = Archiver.Reader:new()
-        local ok = arc:open(zip_path)
+    end
+    if mode ~= "file" and mode ~= "directory" then
+        return false, "archive contains unsupported entry type: " .. tostring(mode)
+    end
+    return true
+end
+
+M._isSafeArchiveEntry = _isSafeArchiveEntry
+
+local function _unzip(zip_path, dest_dir)
+    -- KOReader bundles libarchive on every supported platform. Keeping update
+    -- extraction inside that implementation avoids shelling out to a binary
+    -- that Kindles do not provide and lets us reject unsafe archive entries
+    -- before any file is written.
+    local ok_arch, Archiver = pcall(require, "ffi/archiver")
+    if not (ok_arch and Archiver and Archiver.Reader) then
+        return nil, "KOReader archive support is unavailable"
+    end
+
+    local ok_util, util = pcall(require, "util")
+    if ok_util and util and util.makePath then util.makePath(dest_dir) end
+
+    local arc = Archiver.Reader:new()
+    local ok = arc:open(zip_path)
+    local extract_err
+    if ok then
+        local required = {}
+        for entry in arc:iterate() do
+            local safe, reason = _isSafeArchiveEntry(entry.path, entry.mode)
+            if not safe then
+                ok = false
+                extract_err = reason
+                break
+            end
+            required[entry.path] = true
+        end
+        if ok and not (required["weui.koplugin/main.lua"]
+                and required["weui.koplugin/_meta.lua"]
+                and required["weui.koplugin/zlibrary/embedded_plugin.lua"]) then
+            ok = false
+            extract_err = "archive is missing required plugin files"
+        end
+        -- Validate the complete archive before writing the first file. iterate()
+        -- resets the reader after the validation pass.
         if ok then
             for entry in arc:iterate() do
                 if not arc:extractToPath(entry.path, dest_dir .. "/" .. entry.path) then
                     ok = false
+                    extract_err = arc.err or "archive extraction failed"
                     break
                 end
             end
-            if arc.err then ok = false end
         end
-        local err = arc.err
-        arc:close()
-        if ok then
-            return true
-        end
-        logger.warn("[WeUI][Updater]",
-            "libarchive extract failed, falling back to unzip:", tostring(err))
+        if arc.err then ok = false end
     end
-    local ret = os.execute(string.format("unzip -o -q %q -d %q", zip_path, dest_dir))
-    if ret ~= 0 and ret ~= true then
-        return nil, "unzip failed (exit " .. tostring(ret) .. ")"
-    end
-    return true
+    local err = extract_err or arc.err
+    arc:close()
+    if ok then return true end
+    return nil, tostring(err or "could not open update archive")
 end
 
 -- ---------------------------------------------------------------------------
@@ -648,6 +728,7 @@ local function _doFetch()
         -- The Releases API is authoritative and supplies notes plus the exact asset URL. A 403
         -- (anonymous rate limit) is cheap to detect and immediately falls through to the CDNs.
         { label = "github-api", url = _DEFAULT_API_URL, kind = "release" },
+        { label = "jsdelivr-package", url = _JSDELIVR_PACKAGE_URL, kind = "versions" },
         { label = "fastly-jsdelivr", url = _FASTLY_META_URL, kind = "meta" },
         { label = "jsdelivr", url = _JSDELIVR_META_URL, kind = "meta" },
     }
@@ -674,7 +755,8 @@ local function _doFetch()
                     end
                     err = "parse error: " .. tostring(parse_err)
                 else
-                    local ver = _parseMetaVersion(body)
+                    local ver = source.kind == "versions"
+                        and _parseJsdelivrVersion(body) or _parseMetaVersion(body)
                     if ver then
                         logger.info("weui updater: version source " .. source.label
                             .. " via " .. transport_name)
@@ -687,7 +769,7 @@ local function _doFetch()
                                 GITHUB_OWNER, GITHUB_REPO, ver),
                         }
                     end
-                    err = "version missing from metadata"
+                    err = "version missing from " .. source.kind
                 end
             end
             errors[#errors + 1] = source.label .. "/" .. transport_name
@@ -804,7 +886,7 @@ end
 
 local function _showUpdateDialog(release, current)
     local latest       = release.version
-    local download_url = release.download_url
+    local download_url = _isValidAssetUrl(release.download_url) and release.download_url or nil
     local notes        = release.notes
 
     if not _versionGt(latest, current) then
@@ -1063,5 +1145,6 @@ M._httpGet = _httpGet
 M._httpGetToFile = _httpGetToFile
 M._currentVersion = _currentVersion
 M._doFetch = _doFetch
+M._isValidAssetUrl = _isValidAssetUrl
 
 return M

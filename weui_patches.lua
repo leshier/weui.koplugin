@@ -3385,64 +3385,6 @@ end
 -- ---------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------
--- Debug: button bounds overlay
--- When "weui_debug_button_bounds" is enabled, wraps Button:paintTo so
--- every button draws a 2px border over itself, making it easy to verify
--- the actual tap target real estate on device.
--- ---------------------------------------------------------------------------
-
-function M.installButtonBoundsDebug(plugin)
-    local Button = package.loaded["ui/widget/button"]
-    if not Button then
-        -- Button not loaded yet; defer until first use via a lazy wrapper on
-        -- the Button module loader — we hook require instead.
-        local orig_require = _G.require
-        plugin._orig_require_for_bounds = orig_require
-        _G.require = function(modname, ...)
-            local result = orig_require(modname, ...)
-            if modname == "ui/widget/button" and not result._weui_bounds_patched then
-                M._wrapButtonPaintTo(plugin, result)
-            end
-            return result
-        end
-        return
-    end
-    if not Button._weui_bounds_patched then
-        M._wrapButtonPaintTo(plugin, Button)
-    end
-end
-
-function M._wrapButtonPaintTo(plugin, Button)
-    local Blitbuffer = require("ffi/blitbuffer")
-    local orig_paintTo = Button.paintTo
-    plugin._orig_button_paintTo = orig_paintTo
-    Button._weui_bounds_patched = true
-
-    Button.paintTo = function(btn_self, bb, x, y)
-        orig_paintTo(btn_self, bb, x, y)
-        if not SUISettings:isTrue("weui_debug_button_bounds") then return end
-        local dimen = btn_self:getSize()
-        if not dimen then return end
-        bb:paintBorder(x, y, dimen.w, dimen.h, 2, Blitbuffer.COLOR_RED)
-    end
-end
-
-function M.uninstallButtonBoundsDebug(plugin)
-    -- Restore the require hook if we set one.
-    if plugin._orig_require_for_bounds then
-        _G.require = plugin._orig_require_for_bounds
-        plugin._orig_require_for_bounds = nil
-    end
-    -- Restore Button:paintTo if Button was already loaded when we patched it.
-    local Button = package.loaded["ui/widget/button"]
-    if Button and plugin._orig_button_paintTo then
-        Button.paintTo = plugin._orig_button_paintTo
-        plugin._orig_button_paintTo     = nil
-        Button._weui_bounds_patched = nil
-    end
-end
-
--- ---------------------------------------------------------------------------
 -- Reader-close helpers for gesture actions
 -- ---------------------------------------------------------------------------
 
@@ -4743,10 +4685,6 @@ function M.installAll(plugin)
         pcall(SUIStyle.installTabIconPatch, plugin)
         pcall(SUIStyle.installReaderTabIconPatch, plugin)
     end
-    -- Install button-bounds overlay when the debug setting is on at startup.
-    if SUISettings:isTrue("weui_debug_button_bounds") then
-        M.installButtonBoundsDebug(plugin)
-    end
     -- Folder covers are installed only when the feature is enabled to avoid
     -- wrapping MosaicMenuItem.update unconditionally, which would hide the
     -- BookInfoManager upvalue from third-party user-patches.
@@ -4977,8 +4915,6 @@ function M.teardownAll(plugin)
         Dispatcher._weui_execute_orig    = nil
         Dispatcher._weui_execute_patched = nil
     end
-
-    M.uninstallButtonBoundsDebug(plugin)
 
     -- Clear transient close-path flag.
     plugin._closing_via_gesture = nil

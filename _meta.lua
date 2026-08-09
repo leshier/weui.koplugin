@@ -3,6 +3,6 @@ local _ = require("weui_i18n").translate
 return {
     fullname    = _("We UI"),
     description = _([[A We UI for KOReader with WeRead, private books, and embedded Z-Library acquisition with a dedicated proxy.]]),
-    version     = "1.4.7",
+    version     = "1.4.8",
     author      = "leshier",
 }

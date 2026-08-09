@@ -1240,14 +1240,9 @@ end
 -- Ui.closeDialog when a verdict arrives. Closing on falsy is the bug this contract exists to
 -- prevent -- it strands the user with no dialog and no way back except the menu.
 --
--- test_callback is unused and kept only so the argument positions do not shift; the separate
--- "Verify credentials" button was removed once the action button started verifying. It differed
--- only in not closing on success, truncated badly as a third button on an Oasis, and committed
--- the credentials on success anyway -- so Cancel after it did not mean "change nothing".
---
 -- opts.quiet_save suppresses the "Setting saved successfully!" toast, for callers that paint
 -- their own message over the same region straight after.
-function Ui.showCredentialsDialog(validate_and_save_callback, test_callback, opts)
+function Ui.showCredentialsDialog(validate_and_save_callback, opts)
     opts = opts or {}
     local current_email = Config.getSetting(Config.SETTINGS_USERNAME_KEY) or ""
     local current_password = Config.getSetting(Config.SETTINGS_PASSWORD_KEY) or ""

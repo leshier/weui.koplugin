@@ -159,16 +159,7 @@ local function createGetTextProxy(new_gettext, gettext)
         end
     }
 
-    return setmetatable({
-        -- dump the parsed data of the po file. For debugging only.
-        -- If NewGetText is not loaded, this will be nil value when called
-        debug_dump = function()
-            local new_lang = new_gettext.current_lang
-            local dump_path = string.format("%s/%s/%s", new_gettext.dirname, new_lang, "debug_logs.lua")
-            require("luasettings"):open(dump_path):saveSetting("po", new_gettext):flush()
-            logger.info(string.format("debug_dump: %s.po to %s", new_lang, dump_path))
-      end
-    }, mt)
+    return setmetatable({}, mt)
 end
 
 -- Loaded once, at require time. A mid-session UI language change is not picked up

@@ -108,9 +108,7 @@ function Zlibrary:addToMainMenu(menu_items)
                             keep_menu_open = true,
                             callback = function()
                                 -- Through the broker, so there is one credentials dialog in the
-                                -- plugin. The old inline call passed a test_callback taking no
-                                -- parameters, which discarded the typed values and verified
-                                -- whatever was already stored.
+                                -- plugin and the typed values are verified before they are stored.
                                 self:_promptForCredentials(function(did_save, did_verify)
                                     -- did_verify means the dialog already checked them and said
                                     -- so; a second sign-in and a second toast would be pure
@@ -1012,7 +1010,7 @@ function Zlibrary:_promptForCredentials(on_done)
         return false
     end
 
-    dialog = Ui.showCredentialsDialog(submit, nil, { quiet_save = true })
+    dialog = Ui.showCredentialsDialog(submit, { quiet_save = true })
 
     if not dialog then settle(credential_prompt.waiters) return end
     credential_prompt.dialog = dialog

@@ -8,6 +8,7 @@ local http = require("socket.http")
 local socketutil = require("socketutil")
 local socket_url = require("socket.url")
 local T = require("zlibrary.gettext")
+local RuntimeLocale = require("zlibrary.runtime_locale")
 
 local Api = {}
 
@@ -27,15 +28,6 @@ Api.BLOCKED_TEXT = T("This Z-library server is refusing automated access")
 -- one locale out of fourteen.
 Api.CREDENTIALS_REJECTED_TEXT = T("Credentials rejected or invalid response")
 
-local function _isSimplifiedChineseUi()
-    local GetText = require("gettext")
-    local language = GetText.current_lang
-    if not language and G_reader_settings then
-        language = G_reader_settings:readSetting("language")
-    end
-    return language == "zh_CN" or language == "zh_Hans"
-end
-
 -- API messages are controlled by whichever mirror answered and are commonly English. Showing
 -- those strings verbatim would leak untranslated text into an otherwise Chinese dialog. Keep the
 -- raw response in the log, but use the operation-specific translated fallback on Chinese UIs.
@@ -43,7 +35,7 @@ local function _userFacingApiMessage(message, fallback)
     if message == nil or message == "" then
         return fallback
     end
-    if _isSimplifiedChineseUi() then
+    if RuntimeLocale.is_simplified_chinese then
         return fallback
     end
     return tostring(message)

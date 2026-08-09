@@ -5,6 +5,7 @@ local LuaSettings = require("luasettings")
 local socket_url = require("socket.url")
 local T = require("zlibrary.gettext")
 local Cache = require("zlibrary.cache")
+local RuntimeLocale = require("zlibrary.runtime_locale")
 
 local Config = {
     _lua_settings = nil,
@@ -317,14 +318,8 @@ for _, language in ipairs(Config.SUPPORTED_LANGUAGES) do
     LANGUAGE_VALUE_BY_NAME[language.name:lower()] = language.value
 end
 
-local function _isSimplifiedChineseUi()
-    local GetText = require("gettext")
-    local language = GetText.current_lang
-    if not language and G_reader_settings then
-        language = G_reader_settings:readSetting("language")
-    end
-    return language == "zh_CN" or language == "zh_Hans"
-end
+local CHINESE_LANGUAGE_NAMES = RuntimeLocale.is_simplified_chinese
+    and require("zlibrary.language_names_zh") or nil
 
 function Config.getLanguageDisplayName(value, fallback)
     if type(value) ~= "string" or value == "" then
@@ -335,10 +330,9 @@ function Config.getLanguageDisplayName(value, fallback)
     local language = LANGUAGE_BY_VALUE[input_key]
     local api_key = language and language.value or LANGUAGE_VALUE_BY_NAME[input_key]
 
-    if _isSimplifiedChineseUi() and api_key then
-        local chinese_names = require("zlibrary.language_names_zh")
-        if chinese_names[api_key] then
-            return chinese_names[api_key]
+    if CHINESE_LANGUAGE_NAMES and api_key then
+        if CHINESE_LANGUAGE_NAMES[api_key] then
+            return CHINESE_LANGUAGE_NAMES[api_key]
         end
     end
 

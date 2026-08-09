@@ -148,6 +148,9 @@ add("03-private-book-masked", function()
     Privacy.setPrivateBook(private_file, true, "隐私测试书")
     Privacy.lockNow()
     assert(Privacy.isPrivateBook(private_file, "隐私测试书"), "private book was not persisted")
+    assert(not Privacy.isUnlocked(), "private-book session should be locked")
+    assert(Privacy.privateTitle() ~= "隐私测试书", "private title exposes the real book name")
+    assert(Privacy.privateAuthor() ~= "隐私测试书", "private author exposes the real book name")
     local FM = require("apps/filemanager/filemanager")
     assert(FM.instance and FM.instance.file_chooser, "FileManager missing")
     FM.instance.file_chooser:refreshPath()
@@ -181,13 +184,31 @@ for _, spec in ipairs({
         while #settings_win._nav_stack > 1 do settings_win:_navPop() end
         settings_win:_navPush(spec[2])
         assert(settings_win:_navCurrent().id == spec[2])
-        if spec[2] == "about_settings" and os.getenv("WEUI_QA_LIVE_UPDATE") == "1" then
-            local release = require("weui_updater")._doFetch()
-            assert(type(release) == "table" and not release.error,
-                "live update check failed: " .. tostring(release and release.error))
-            assert(type(release.version) == "string" and release.version ~= "",
-                "live update check returned no version")
-            append_result("INFO", "update-source", "latest=" .. release.version)
+        if spec[2] == "about_settings" then
+            local meta = assert(dofile(qa_root .. "/plugins/weui.koplugin/_meta.lua"))
+            assert(type(meta.version) == "string" and meta.version:match("^%d+%.%d+%.%d+$"),
+                "About metadata has no valid version")
+            assert(type(meta.author) == "string" and meta.author ~= "",
+                "About metadata has no author")
+
+            local Store = require("weui_store")
+            local key = "weui_qa_persistence_probe"
+            local previous = Store:get(key)
+            Store:set(key, "pw4-persisted")
+            local settings_path = require("datastorage"):getSettingsDir()
+                .. "/weui/weui_settings.lua"
+            local on_disk = require("luasettings"):open(settings_path):readSetting(key)
+            assert(on_disk == "pw4-persisted", "WeUI setting was not persisted to disk")
+            Store:set(key, previous)
+
+            if os.getenv("WEUI_QA_LIVE_UPDATE") == "1" then
+                local release = require("weui_updater")._doFetch()
+                assert(type(release) == "table" and not release.error,
+                    "live update check failed: " .. tostring(release and release.error))
+                assert(type(release.version) == "string" and release.version ~= "",
+                    "live update check returned no version")
+                append_result("INFO", "update-source", "latest=" .. release.version)
+            end
         end
     end)
 end
@@ -243,6 +264,10 @@ add("20-zlibrary-languages", function()
     local zlib = assert(current_plugin()._zlibrary_plugin, "embedded Z-Library plugin missing")
     local Config = require("zlibrary.config")
     Config.saveSetting(Config.SETTINGS_SEARCH_LANGUAGES_KEY, { "chinese", "english" })
+    assert(Config.getLanguageDisplayName("chinese") == "简体中文",
+        "Chinese language label was not localized")
+    assert(Config.getLanguageDisplayName("english") == "英语",
+        "English language label was not localized")
     require("zlibrary.ui").showLanguageSelectionDialog(zlib)
     zlibrary_languages = top_widget()
     assert(zlibrary_languages, "Z-Library language picker did not open")
@@ -324,6 +349,10 @@ add("26-sleep-screen", function()
     }, "x"))
     G_reader_settings:saveSetting("screensaver_type", "message")
     G_reader_settings:makeTrue("screensaver_show_message")
+    G_reader_settings:saveSetting("screensaver_message", "静心阅读 · 今日也要读一点")
+    G_reader_settings:saveSetting("screensaver_message_container", "box")
+    G_reader_settings:saveSetting("screensaver_message_vertical_position", 42)
+    assert(G_reader_settings:readSetting("screensaver_message") == "静心阅读 · 今日也要读一点")
     local Screensaver = require("ui/screensaver")
     Screensaver:setup()
     Screensaver:show()
