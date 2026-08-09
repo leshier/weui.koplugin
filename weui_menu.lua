@@ -2682,7 +2682,11 @@ WeUIPlugin.addToMainMenu = function(self, menu_items)
                             -- Trigger the screensaver manually to preview
                             local ok_s, Screensaver = pcall(require, "ui/screensaver")
                             if ok_s and Screensaver then
-                                Screensaver:setup("suspend", "")
+                                -- Normal Kindle suspend calls setup() without
+                                -- an event overlay. Passing an empty string is
+                                -- still truthy in Lua and made KOReader paint
+                                -- a clipped, empty overlay in the top-right.
+                                Screensaver:setup()
                                 Screensaver:show()
                             end
                         end,

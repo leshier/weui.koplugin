@@ -60,6 +60,9 @@ function  Preloader.getDownloadQuotaStatus(callback)
         local wrap_callback = getSafeCallback(callback)
         local quota_status = Config.getConfigRuntimeCache():get("download_quota_status", 1800)
         if type(quota_status) == "table" and next(quota_status) then return wrap_callback(true) end
+        -- Quota is account-specific. Public browsing must not emit a failed
+        -- background request on a fresh install.
+        if not Config.hasCredentials() then return wrap_callback(false) end
         if not NetworkMgr:isConnected() then return wrap_callback(false) end
         local task = function() return ApiHelper.fetchWithAuth(Api.getDownloadQuotaStatus) end
         Preloader.channel:pushTask(task, function(success, res)
@@ -77,6 +80,9 @@ function  Preloader.getFavoriteBookIds(callback)
         local wrap_callback = getSafeCallback(callback)
         local cached_ids = Config.getConfigRuntimeCache():get("favorite_book_ids", 1800)
         if type(cached_ids) == "table" and next(cached_ids) then return wrap_callback(true) end
+        -- The public cover menu calls this on every list, but favorites require
+        -- an account. Do not touch the network until credentials exist.
+        if not Config.hasCredentials() then return wrap_callback(false) end
         if not NetworkMgr:isConnected() then return wrap_callback(false) end
         local task = function() return ApiHelper.fetchWithAuth(Api.getFavoriteBookIds) end
         Preloader.channel:pushTask(task, function(success, res)
@@ -156,6 +162,7 @@ function  Preloader.getRecommendedBooks(callback)
         local cache_key = "recommended"
         local has_cache = cache:get(cache_key, 1840000)
         if type(has_cache) == "table" then return wrap_callback(true) end
+        if not Config.hasCredentials() then return wrap_callback(false) end
         if not NetworkMgr:isConnected() then return wrap_callback(false) end
         -- Unlike most-popular above, recommended is per-account (requires_auth = true in
         -- main.lua), so it goes through fetchWithAuth for the session cookie and re-login.

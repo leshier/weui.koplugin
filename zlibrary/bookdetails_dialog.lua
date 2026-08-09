@@ -47,8 +47,11 @@ local function applyRoundedCorners(frame_widget, border_size)
     end
     frame_widget.paintTo = function(self, bb, x, y)
         orig_pt(self, bb, x, y)
-        if not (self.dimen and self.dimen.x) then return end
-        local tx, ty, tw, th = self.dimen.x, self.dimen.y, self.dimen.w, self.dimen.h
+        if not (self.dimen and type(x) == "number" and type(y) == "number") then return end
+        -- Nested widgets receive their absolute paint origin from their
+        -- container. Their own dimen.x/y may remain zero, which used to draw
+        -- a second rounded outline in the screen's top-left corner.
+        local tx, ty, tw, th = x, y, self.dimen.w, self.dimen.h
         local wh, blk = Blitbuffer.COLOR_WHITE, Blitbuffer.COLOR_BLACK
         for j = 0, r - 1 do
             local cut = cut_table[j]

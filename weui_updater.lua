@@ -103,9 +103,9 @@ local function _currentVersion()
     -- _meta.lua, not a stale cached entry from another plugin (require caches
     -- by module name, so require("_meta") may return the wrong table).
     local ok, meta = pcall(dofile, _plugin_dir .. "/_meta.lua")
-    if ok and type(meta) == "table" and meta.name == "weui" and meta.version then return meta.version end
+    if ok and type(meta) == "table" and meta.version then return meta.version end
     local rok, rmeta = pcall(require, "_meta")
-    if rok and type(rmeta) == "table" and rmeta.name == "weui" and rmeta.version then return rmeta.version end
+    if rok and type(rmeta) == "table" and rmeta.version then return rmeta.version end
     return "0.0.0"
 end
 
@@ -958,5 +958,6 @@ end
 -- tests while exercising retries, redirects, proxy selection and cleanup.
 M._httpGet = _httpGet
 M._httpGetToFile = _httpGetToFile
+M._currentVersion = _currentVersion
 
 return M

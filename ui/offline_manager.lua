@@ -33,18 +33,38 @@ local OfflineManager = {}
 -- Helpers — WeRead plugin access
 -- ---------------------------------------------------------------------------
 local function _getWeRead()
+    -- WeRead is embedded in WeUI now, so resolve the live instance from the
+    -- active UI owner instead of mistaking the weui_weread class for an
+    -- instance. ReaderUI wins while a book is open; FileManager is the normal
+    -- library path. Keep both aliases for compatibility with older builds.
+    for _, module_name in ipairs({
+        "apps/reader/readerui",
+        "apps/filemanager/filemanager",
+    }) do
+        local owner = package.loaded[module_name]
+        local ui = owner and owner.instance
+        local weui = ui and ui.weui
+        local integrated = weui and (weui._weread_plugin or weui.weread)
+            or (ui and ui.weread)
+        if integrated and integrated.settings then return integrated end
+    end
+
+    -- Compatibility with the former standalone plugin.
     local ok, WR = pcall(require, "weui_weread")
     if ok and WR and WR.instance then return WR.instance end
-    -- Fallback: try package.loaded
+    -- Last resort for a module that directly exports an instantiated object.
+    -- A class table has methods too, but no downloader/settings state.
     for key, mod in pairs(package.loaded) do
         if type(key) == "string" and key:find("weread", 1, true) and type(mod) == "table" then
-            if type(mod.isBookDownloaded) == "function" then
+            if type(mod.isBookDownloaded) == "function" and mod.settings then
                 return mod
             end
         end
     end
     return nil
 end
+
+OfflineManager._getWeRead = _getWeRead
 
 local function _getDownloader()
     local wr = _getWeRead()

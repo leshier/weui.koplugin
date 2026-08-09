@@ -425,11 +425,11 @@ local function pickQuote()
 
         pos  = 1
 
-        logger.warn("weui quote: new deck n=" .. n .. " pos=" .. pos)
+        logger.dbg("weui quote: new deck n=" .. n .. " pos=" .. pos)
 
     else
 
-        logger.warn("weui quote: loaded deck pos=" .. pos .. "/" .. n)
+        logger.dbg("weui quote: loaded deck pos=" .. pos .. "/" .. n)
 
     end
 
@@ -453,7 +453,7 @@ local function pickQuote()
 
         pos = 1
 
-        logger.warn("weui quote: reshuffled, next pos=1")
+        logger.dbg("weui quote: reshuffled, next pos=1")
 
     end
 
@@ -461,7 +461,7 @@ local function pickQuote()
 
     _saveDeck(deck, pos)
 
-    logger.warn("weui quote: showing idx=" .. idx .. " saved pos=" .. pos)
+    logger.dbg("weui quote: showing idx=" .. idx .. " saved pos=" .. pos)
 
     return quotes[idx]
 
@@ -956,7 +956,7 @@ local function buildFromHighlight(inner_w, face_quote, face_attr, vspan_gap, has
 
     end
 
-    logger.warn("weui: quote: showing highlight from '" .. tostring(h.title) .. "': " .. tostring(h.text):sub(1, 60))
+    logger.dbg("weui: quote: selected highlight from '" .. tostring(h.title) .. "'")
 
     local attr = "— " .. h.title
 
@@ -1122,7 +1122,7 @@ function M.build(w, ctx)
 
     local has_wallpaper = ctx and ctx.has_wallpaper
 
-    logger.warn("weui: quote: build source=" .. source .. " align=" .. alignment)
+    logger.dbg("weui: quote: build source=" .. source .. " align=" .. alignment)
 
     local content
     local hl_filepath

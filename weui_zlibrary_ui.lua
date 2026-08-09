@@ -23,6 +23,8 @@ local _button_class, _button_init_original, _button_init_wrapper
 local _details_class, _details_buttons_original, _details_buttons_wrapper
 local _details_download_original, _details_download_wrapper
 local _details_favorite_original, _details_favorite_wrapper
+local _details_budget_original, _details_budget_wrapper
+local _details_build_original, _details_build_wrapper
 local _zlibrary_ui_module, _credentials_original, _credentials_wrapper
 local installCredentialsAdapter
 
@@ -135,12 +137,16 @@ local function installBookDetailsAdapter()
     local ok, module = pcall(require, "zlibrary.bookdetails_dialog")
     local class = ok and module and module.BookDetailsDialog
     if type(class) ~= "table" or type(class._buildButtons) ~= "function"
-            or type(class.onDownloadClick) ~= "function" then
+            or type(class.onDownloadClick) ~= "function"
+            or type(class._contentBudget) ~= "function"
+            or type(class._buildInnerDialog) ~= "function" then
         return false
     end
     if class._weui_details_owner == M
             and class._buildButtons == class._weui_details_buttons_wrapper
-            and class.onDownloadClick == class._weui_details_download_wrapper then
+            and class.onDownloadClick == class._weui_details_download_wrapper
+            and class._contentBudget == class._weui_details_budget_wrapper
+            and class._buildInnerDialog == class._weui_details_build_wrapper then
         return true
     end
     if class._weui_details_buttons_wrapper
@@ -157,6 +163,16 @@ local function installBookDetailsAdapter()
             and class._generateFavoriteButtonDef == class._weui_details_favorite_wrapper
             and type(class._weui_details_favorite_original) == "function" then
         class._generateFavoriteButtonDef = class._weui_details_favorite_original
+    end
+    if class._weui_details_budget_wrapper
+            and class._contentBudget == class._weui_details_budget_wrapper
+            and type(class._weui_details_budget_original) == "function" then
+        class._contentBudget = class._weui_details_budget_original
+    end
+    if class._weui_details_build_wrapper
+            and class._buildInnerDialog == class._weui_details_build_wrapper
+            and type(class._weui_details_build_original) == "function" then
+        class._buildInnerDialog = class._weui_details_build_original
     end
 
     local original_buttons = class._buildButtons
@@ -180,19 +196,49 @@ local function installBookDetailsAdapter()
         end
         class._generateFavoriteButtonDef = favorite_wrapper
     end
+    -- The vendored dialog budgets and centers itself against the full screen.
+    -- WeUI reserves permanent status/navigation bars, so reduce the content
+    -- budget by that chrome and center the popup in the remaining region.
+    local original_budget = class._contentBudget
+    local budget_wrapper = function(self, buttons)
+        local budget = original_budget(self, buttons)
+        local UI = require("weui_core")
+        local reserved = math.max(0, Screen:getHeight() - UI.getContentHeight())
+        return math.max(budget - reserved, Screen:scaleBySize(120))
+    end
+    local original_build = class._buildInnerDialog
+    local build_wrapper = function(self)
+        original_build(self)
+        local center = self.inner_dialog and self.inner_dialog[1]
+        if center and center.dimen then
+            local UI = require("weui_core")
+            center.dimen.x = 0
+            center.dimen.y = UI.getContentTop()
+            center.dimen.w = Screen:getWidth()
+            center.dimen.h = UI.getContentHeight()
+        end
+    end
     class._buildButtons = buttons_wrapper
     class.onDownloadClick = download_wrapper
+    class._contentBudget = budget_wrapper
+    class._buildInnerDialog = build_wrapper
     class._weui_details_buttons_original = original_buttons
     class._weui_details_buttons_wrapper = buttons_wrapper
     class._weui_details_download_original = original_download
     class._weui_details_download_wrapper = download_wrapper
     class._weui_details_favorite_original = original_favorite
     class._weui_details_favorite_wrapper = favorite_wrapper
+    class._weui_details_budget_original = original_budget
+    class._weui_details_budget_wrapper = budget_wrapper
+    class._weui_details_build_original = original_build
+    class._weui_details_build_wrapper = build_wrapper
     class._weui_details_owner = M
     _details_class = class
     _details_buttons_original, _details_buttons_wrapper = original_buttons, buttons_wrapper
     _details_download_original, _details_download_wrapper = original_download, download_wrapper
     _details_favorite_original, _details_favorite_wrapper = original_favorite, favorite_wrapper
+    _details_budget_original, _details_budget_wrapper = original_budget, budget_wrapper
+    _details_build_original, _details_build_wrapper = original_build, build_wrapper
     return true
 end
 
@@ -705,6 +751,12 @@ function M.uninstall()
         if _details_class._generateFavoriteButtonDef == _details_favorite_wrapper then
             _details_class._generateFavoriteButtonDef = _details_favorite_original
         end
+        if _details_class._contentBudget == _details_budget_wrapper then
+            _details_class._contentBudget = _details_budget_original
+        end
+        if _details_class._buildInnerDialog == _details_build_wrapper then
+            _details_class._buildInnerDialog = _details_build_original
+        end
         if _details_class._weui_details_owner == M then
             _details_class._weui_details_buttons_original = nil
             _details_class._weui_details_buttons_wrapper = nil
@@ -712,6 +764,10 @@ function M.uninstall()
             _details_class._weui_details_download_wrapper = nil
             _details_class._weui_details_favorite_original = nil
             _details_class._weui_details_favorite_wrapper = nil
+            _details_class._weui_details_budget_original = nil
+            _details_class._weui_details_budget_wrapper = nil
+            _details_class._weui_details_build_original = nil
+            _details_class._weui_details_build_wrapper = nil
             _details_class._weui_details_owner = nil
         end
     end
@@ -735,6 +791,8 @@ function M.uninstall()
     _details_class, _details_buttons_original, _details_buttons_wrapper = nil, nil, nil
     _details_download_original, _details_download_wrapper = nil, nil, nil
     _details_favorite_original, _details_favorite_wrapper = nil, nil
+    _details_budget_original, _details_budget_wrapper = nil, nil
+    _details_build_original, _details_build_wrapper = nil, nil
     _zlibrary_ui_module, _credentials_original, _credentials_wrapper = nil, nil, nil
     _button_class, _button_init_original, _button_init_wrapper = nil, nil, nil
     _installed = false

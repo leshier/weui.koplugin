@@ -4671,6 +4671,7 @@ function M.patchScreensaverWeb()
     if Screensaver._weui_web_patched then return end
 
     local orig_setup = Screensaver.setup
+    local orig_show = Screensaver.show
     function Screensaver:setup(event, event_message, ...)
         orig_setup(self, event, event_message, ...)
 
@@ -4692,6 +4693,22 @@ function M.patchScreensaverWeb()
             self.screensaver_background = "black"
             self.show_message = false
         end
+    end
+
+    function Screensaver:show(...)
+        -- KOReader already flashes image-based sleep screens on e-ink, but
+        -- message/status modes can otherwise retain fragments from the reader
+        -- UI. A single white full refresh at suspend time prevents that
+        -- particularly visible PW4 ghosting without adding refreshes while the
+        -- user is interacting with the device.
+        if Device:hasEinkScreen()
+                and not self:modeIsImage()
+                and self:withBackground() then
+            local screen_w, screen_h = Screen:getWidth(), Screen:getHeight()
+            Screen:clear()
+            Screen:refreshFull(0, 0, screen_w, screen_h)
+        end
+        return orig_show(self, ...)
     end
 
     Screensaver._weui_web_patched = true
