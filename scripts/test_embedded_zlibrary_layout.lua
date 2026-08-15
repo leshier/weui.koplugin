@@ -15,6 +15,7 @@ for _, path in ipairs({
     "zlibrary/ui.lua",
     "zlibrary/download.lua",
     "zlibrary/config.lua",
+    "zlibrary/mirror_pool.lua",
     "zlibrary/gettext.lua",
     "zlibrary/runtime_locale.lua",
     "l10n/zh_CN/koreader.mo",
@@ -26,6 +27,7 @@ end
 local embedded = read("zlibrary/embedded_plugin.lua")
 assert(not embedded:find('require%("zlibrary%.ota"%)'), "embedded module must not self-update")
 assert(not embedded:find("registerToMainMenu", 1, true), "embedded module must not add a second plugin menu")
+assert(embedded:find('T%("Automatic server failover"%)'), "mirror failover setting is missing")
 
 local main = read("main.lua")
 assert(main:find('require, "zlibrary.embedded_plugin"', 1, true))

@@ -43,4 +43,8 @@ local api = read("zlibrary/api.lua")
 assert(not api:find("data.message or", 1, true), "an API message can bypass Chinese localization")
 assert(api:find("_userFacingApiMessage", 1, true), "API error localization guard is missing")
 
+local zh = read("l10n/zh_CN/koreader.po")
+assert(zh:find('msgid "Automatic server failover"', 1, true))
+assert(zh:find('msgstr "服务器自动切换"', 1, true))
+
 print("ZLIBRARY_CHINESE_UI_OK")

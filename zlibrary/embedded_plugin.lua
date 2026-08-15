@@ -22,6 +22,7 @@ local Device = require("device")
 local MultiSearchDialog = require("zlibrary.multisearch_dialog")
 local DialogManager = require("zlibrary.dialog_manager")
 local Trapper = require("ui/trapper")
+local MirrorPool = require("zlibrary.mirror_pool")
 
 local Zlibrary = WidgetContainer:extend{
     name = T("Z-library"),
@@ -101,6 +102,16 @@ function Zlibrary:addToMainMenu(menu_items)
                             keep_menu_open = true,
                             callback = function()
                                 UIManager:nextTick(function() self:autoDiscoverAndSetBaseUrl(true) end)
+                            end,
+                        },
+                        {
+                            text = T("Automatic server failover"),
+                            keep_menu_open = true,
+                            checked_func = function()
+                                return Config.getAutoMirrorFailover()
+                            end,
+                            callback = function()
+                                Config.setAutoMirrorFailover(not Config.getAutoMirrorFailover())
                             end,
                         },
                         {
@@ -245,6 +256,8 @@ function Zlibrary:addToMainMenu(menu_items)
                                         callback = function()
                                             Config.getConfigRuntimeCache():clear()
                                             Cache:new{ name = "_domains_cache" }:clear()
+                                            Config.clearCacheRealUrl()
+                                            MirrorPool.reset()
                                             Ui.showInfoMessage(T("Runtime cache cleared."))
                                         end,
                                     },

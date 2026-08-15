@@ -24,6 +24,7 @@ Config.SETTINGS_SEARCH_ORDERS_KEY = "zlibrary_search_order"
 Config.SETTINGS_VIEW_SETTINGS_KEY = "zlibrary_view_settings"
 Config.SETTINGS_DOWNLOAD_DIR_KEY = "zlibrary_download_dir"
 Config.SETTINGS_SKIP_OPEN_BOOK_PROMPT_KEY = "zlibrary_skip_open_book_prompt"
+Config.SETTINGS_AUTO_MIRROR_FAILOVER_KEY = "zlibrary_auto_mirror_failover"
 Config.SETTINGS_TIMEOUT_LOGIN_KEY = "zlibrary_timeout_login"
 Config.SETTINGS_TIMEOUT_SEARCH_KEY = "zlibrary_timeout_search"
 Config.SETTINGS_TIMEOUT_BOOK_DETAILS_KEY = "zlibrary_timeout_book_details"
@@ -458,10 +459,19 @@ function Config.disableRuntimeCacheWrites()
 end
 
 function Config.getCacheRealUrl()
+    if Config._active_base_url and Config._active_base_url_at
+            and os.time() - Config._active_base_url_at >= 0
+            and os.time() - Config._active_base_url_at <= 600 then
+        return Config._active_base_url
+    end
+    Config._active_base_url = nil
+    Config._active_base_url_at = nil
     return Config.getConfigRuntimeCache():get("api_real_url", 600)
 end
 
 function Config.clearCacheRealUrl()
+    Config._active_base_url = nil
+    Config._active_base_url_at = nil
     return Config.getConfigRuntimeCache():remove("api_real_url")
 end
 
@@ -479,6 +489,35 @@ local function _getUrlOrigin(url)
         host = parsed.host,
         port = parsed.port,
     })
+end
+
+-- Select a short-lived mirror without overwriting the user's configured base
+-- URL. The in-memory assignment still works inside forked network workers,
+-- where runtime-cache writes are intentionally disabled; their caller can
+-- import the selected base after the result crosses back to the parent.
+function Config.setRuntimeBaseUrl(url)
+    local value = _getUrlOrigin(url)
+    local parsed = value and socket_url.parse(value) or nil
+    if not (parsed and (parsed.scheme == "https" or parsed.scheme == "http")
+            and parsed.host and parsed.host:find("%.")) then
+        return false
+    end
+    Config._active_base_url = value
+    Config._active_base_url_at = os.time()
+    Config.getConfigRuntimeCache():insert("api_real_url", value)
+    return true
+end
+
+function Config.getRuntimeBaseUrl(local_only)
+    if local_only then
+        local age = Config._active_base_url_at
+            and (os.time() - Config._active_base_url_at) or nil
+        if Config._active_base_url and age and age >= 0 and age <= 600 then
+            return Config._active_base_url
+        end
+        return nil
+    end
+    return Config.getCacheRealUrl()
 end
 
 function Config.setCacheRealUrl(original_url, real_url)
@@ -502,7 +541,7 @@ function Config.setCacheRealUrl(original_url, real_url)
         real_url = string.sub(real_url, 1, -2)
     end
 
-    return Config.getConfigRuntimeCache():insert("api_real_url", real_url)
+    return Config.setRuntimeBaseUrl(real_url)
 end
 
 -- Drop the cached redirect target when that very host is the one that just failed.
@@ -879,6 +918,14 @@ end
 
 function Config.setSkipOpenBookPrompt(skip)
     Config.saveSetting(Config.SETTINGS_SKIP_OPEN_BOOK_PROMPT_KEY, skip)
+end
+
+function Config.getAutoMirrorFailover()
+    return Config.getSetting(Config.SETTINGS_AUTO_MIRROR_FAILOVER_KEY, true) ~= false
+end
+
+function Config.setAutoMirrorFailover(enabled)
+    Config.saveSetting(Config.SETTINGS_AUTO_MIRROR_FAILOVER_KEY, enabled == true)
 end
 
 -- Timeout configuration functions

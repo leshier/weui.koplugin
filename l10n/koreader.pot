@@ -42,6 +42,10 @@ msgstr ""
 msgid "Set base URL"
 msgstr ""
 
+#: zlibrary/embedded_plugin.lua
+msgid "Automatic server failover"
+msgstr ""
+
 #: main.lua:110 zlibrary/ui.lua:1272
 msgid "Set credentials"
 msgstr ""

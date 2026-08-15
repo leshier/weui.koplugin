@@ -9,6 +9,7 @@ local socketutil = require("socketutil")
 local socket_url = require("socket.url")
 local T = require("zlibrary.gettext")
 local RuntimeLocale = require("zlibrary.runtime_locale")
+local MirrorPool = require("zlibrary.mirror_pool")
 
 local Api = {}
 
@@ -427,6 +428,38 @@ local function _extractErrorFromJsonBody(body)
     return nil
 end
 
+local function _tryMirrorFailover(options, reason)
+    if options.mirror_failover ~= true or options.sink
+            or not Config.getAutoMirrorFailover() then
+        return nil
+    end
+    local count = tonumber(options._mirror_failover_count) or 0
+    if count >= MirrorPool.MAX_FAILOVERS then
+        MirrorPool.recordFailure(options.url, reason)
+        Config.clearCacheRealUrlIfPinned(options.url)
+        return nil
+    end
+
+    options._mirror_attempted = options._mirror_attempted or {}
+    -- Remove a failed redirect pin before choosing the replacement. The
+    -- mirror pool installs the selected runtime base itself.
+    Config.clearCacheRealUrlIfPinned(options.url)
+    local next_url = MirrorPool.failover(
+        options.url, options._mirror_attempted, reason)
+    if not next_url then return nil end
+
+    options.url = next_url
+    options._mirror_failover_count = count + 1
+    options._redirect_hops = nil
+    options._redirect_seen = nil
+    options._retried = nil
+
+    logger.info(string.format(
+        "Zlibrary:Api.makeHttpRequest - mirror failover attempt %d/%d (%s)",
+        options._mirror_failover_count, MirrorPool.MAX_FAILOVERS, tostring(reason)))
+    return Api.makeHttpRequest(options)
+end
+
 function Api.makeHttpRequest(options)
     logger.dbg(string.format("Zlibrary:Api.makeHttpRequest - START - URL: %s, Method: %s", _loggableUrl(options.url), options.method or "GET"))
 
@@ -523,6 +556,9 @@ function Api.makeHttpRequest(options)
             tostring(request_params.method), _loggableUrl(options.url),
             error_msg, result.elapsed or -1,
             first_byte_ms and (first_byte_ms .. "ms") or "none", result.error))
+        local retry_result = _tryMirrorFailover(options,
+            error_msg:lower():find("timeout", 1, true) and "timeout" or "transport")
+        if retry_result then return retry_result end
         return result
     end
 
@@ -595,6 +631,12 @@ function Api.makeHttpRequest(options)
             tostring(request_params.method), _loggableUrl(options.url),
             status_str, type(result.status_code), result.elapsed or -1,
             first_byte_ms and (first_byte_ms .. "ms") or "none", result.error))
+        local reason = is_timeout and "timeout"
+            or ((string.find(status_str, "name resolution", 1, true)
+                or string.find(status_str, "host or service not provided", 1, true))
+                and "dns" or "transport")
+        local retry_result = _tryMirrorFailover(options, reason)
+        if retry_result then return retry_result end
         return result
     end
 
@@ -646,6 +688,8 @@ function Api.makeHttpRequest(options)
                 logger.err(string.format(
                     "Zlibrary:Api.makeHttpRequest - Redirect loop: %s was already requested, not following it again",
                     _loggableUrl(redir_res.real_url)))
+                local retry_result = _tryMirrorFailover(options, "redirect")
+                if retry_result then return retry_result end
                 return result
             end
             seen[redir_res.real_url] = true
@@ -656,6 +700,8 @@ function Api.makeHttpRequest(options)
                 logger.err(string.format(
                     "Zlibrary:Api.makeHttpRequest - Redirect chain exceeded %d hops, giving up at %s",
                     MAX_REDIRECT_HOPS, _loggableUrl(options.url)))
+                local retry_result = _tryMirrorFailover(options, "redirect")
+                if retry_result then return retry_result end
                 return result
             end
             logger.info(string.format("Zlibrary:Api.makeHttpRequest - Following %s: %s -> %s (hop %d)",
@@ -670,13 +716,17 @@ function Api.makeHttpRequest(options)
             -- real body, headers and elapsed time and replace the status with the probe's own.
             -- Leave the response intact and let the status handling below report it.
             logger.info("Zlibrary:Api.makeHttpRequest - Not following redirect: " .. tostring(redir_res.error))
+            local retry_result = _tryMirrorFailover(options, "redirect")
+            if retry_result then return retry_result end
         end
     end
 
+    local mirror_failure_reason
     if result.status_code ~= 200 and result.status_code ~= 206 then
         if not result.error then
             local json_error = _extractErrorFromJsonBody(result.body)
             if _looksLikeBotChallenge(result.body) then
+                mirror_failure_reason = "challenge"
                 local parsed = socket_url.parse(options.url or "")
                 result.error = string.format("%s (%s). %s",
                     Api.BLOCKED_TEXT,
@@ -702,9 +752,36 @@ function Api.makeHttpRequest(options)
             Api.BLOCKED_TEXT,
             (parsed and parsed.host) or tostring(options.url),
             T("Try a different Z-library server."))
+        mirror_failure_reason = "challenge"
         logger.err(string.format(
             "Zlibrary:Api.makeHttpRequest - %s answered a bot-check page with status %s, not the API",
             _loggableUrl(options.url), tostring(result.status_code)))
+    end
+
+    if not mirror_failure_reason and type(result.status_code) == "number"
+            and result.status_code >= 500 then
+        mirror_failure_reason = "server"
+    end
+
+    if not mirror_failure_reason and options.expect_json
+            and type(result.status_code) == "number"
+            and result.status_code >= 200 and result.status_code < 300 then
+        local valid_json, decoded = pcall(json.decode, result.body or "", json.decode.simple)
+        if not valid_json or type(decoded) ~= "table" then
+            result.error = T("Invalid response format from server")
+            mirror_failure_reason = "invalid_response"
+        end
+    end
+
+    if mirror_failure_reason then
+        local retry_result = _tryMirrorFailover(options, mirror_failure_reason)
+        if retry_result then return retry_result end
+    elseif options.mirror_failover and type(result.status_code) == "number"
+            and ((result.status_code >= 200 and result.status_code < 300)
+                or (result.status_code >= 400 and result.status_code < 500)) then
+        -- A business 4xx still proves that the mirror and its API are alive;
+        -- it must not trigger a switch, and it should clear an old cooldown.
+        MirrorPool.recordSuccess(options.url, result.elapsed)
     end
 
     logger.dbg(string.format("Zlibrary:Api.makeHttpRequest - END - Status: %s, Headers found: %s, Error: %s",
@@ -751,6 +828,8 @@ function Api.login(email, password, is_redir_callback)
         onRedirect = (not is_redir_callback) and function()
             return function(redir_res) return Api.login(email, password, true) end
         end,
+        mirror_failover = true,
+        expect_json = true,
     }
 
     if is_redir_callback then return http_result end
@@ -872,6 +951,8 @@ function Api.search(query, user_id, user_key, languages, extensions, order, page
         onRedirect = (not is_redir_callback) and function()
             return function(redir_res) return Api.search(query, user_id, user_key, languages, extensions, order, page, true) end
         end,
+        mirror_failover = true,
+        expect_json = true,
     }
 
     if is_redir_callback then return http_result end
@@ -1099,6 +1180,8 @@ function Api.getRecommendedBooks(user_id, user_key)
         timeout = Config.getRecommendedTimeout(),
         retry_on_stall = true,
         onRedirect = Config.getRecommendedBooksUrl,
+        mirror_failover = true,
+        expect_json = true,
     }
 
     if http_result.error then
@@ -1142,6 +1225,8 @@ function Api.getMostPopularBooks(user_id, user_key)
         timeout = Config.getPopularTimeout(),
         retry_on_stall = true,
         onRedirect = Config.getMostPopularBooksUrl,
+        mirror_failover = true,
+        expect_json = true,
     }
 
     if http_result.error then
@@ -1187,6 +1272,8 @@ function Api.getBookDetails(user_id, user_key, book_id, book_hash)
         onRedirect = function()
             return Config.getBookDetailsUrl(book_id, book_hash)
         end,
+        mirror_failover = true,
+        expect_json = true,
     }
 
     if http_result.error then
@@ -1237,6 +1324,8 @@ function Api.getDownloadLink(user_id, user_key, book_id, book_hash)
         onRedirect = function()
             return Config.getDownloadLinkUrl(book_id, book_hash)
         end,
+        mirror_failover = true,
+        expect_json = true,
     }
 
     if http_result.error then
@@ -1301,6 +1390,8 @@ function Api.getSimilarBooks(user_id, user_key, book_id, book_hash)
         onRedirect = function()
             return Config.getSimilarBooksUrl(book_id, book_hash)
         end,
+        mirror_failover = true,
+        expect_json = true,
     }
 
     if http_result.error then
@@ -1348,6 +1439,8 @@ function Api.getDownloadedBooks(user_id, user_key, page, order)
         onRedirect = function()
             return Config.getDownloadedBooksUrl(page, order)
         end,
+        mirror_failover = true,
+        expect_json = true,
     }
 
     if http_result.error then
@@ -1401,6 +1494,8 @@ function Api.getFavoriteBooks(user_id, user_key, page, order)
         onRedirect = function()
             return Config.getFavoriteBooksUrl(page, order)
         end,
+        mirror_failover = true,
+        expect_json = true,
     }
 
     if http_result.error then
@@ -1537,6 +1632,8 @@ function Api.getDownloadQuotaStatus(user_id, user_key)
         headers = headers,
         timeout = Config.getPopularTimeout(),
         onRedirect = Config.getDownloadQuotaUrl,
+        mirror_failover = true,
+        expect_json = true,
     }
 
     if http_result.error then
@@ -1578,6 +1675,8 @@ function Api.getFavoriteBookIds(user_id, user_key)
         headers = headers,
         timeout = Config.getPopularTimeout(),
         onRedirect = Config.getFavoriteBookIdsUrl,
+        mirror_failover = true,
+        expect_json = true,
     }
 
     if http_result.error then
@@ -1726,7 +1825,9 @@ function Api.getBookComments(user_id, user_key, book_id)
         retry_on_stall = true,
         onRedirect = function()
             return Config.getBookCommentsUrl(book_id)
-        end
+        end,
+        mirror_failover = true,
+        expect_json = true,
     }
 
     if http_result.error then

@@ -51,6 +51,18 @@ start that process under temporary memory pressure, WeUI safely falls back to
 an in-process download. Empty links, malformed results and crashed workers are
 reported separately with retry support instead of as an unknown error.
 
+Z-Library API requests use a bounded health-aware mirror pool by default. DNS
+failures, timeouts, server errors, redirect loops, invalid API responses and
+browser-check pages temporarily cool down the affected address and retry at
+most two alternatives. Authentication failures, quota responses and other
+normal 4xx replies never trigger a switch. The selected address is temporary
+and does not overwrite the user's preferred base URL. Disable this behavior at
+`Z-Library → Settings → Automatic server failover`.
+
+Streaming cover and book bodies are never replayed on another mirror after a
+transfer begins. When the Z-Library-only proxy is enabled, mirror retries stay
+inside the same fail-closed proxy transport.
+
 #### Z-Library-only proxy
 
 Open `We UI → Z-Library Proxy` to route every Z-Library request through an

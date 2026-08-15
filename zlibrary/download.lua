@@ -228,7 +228,15 @@ function Download.run(self, book)
             -- This process exists only to return a result table, and it shares the cache file with the
             -- parent. Nothing it writes there can help, and some of it would destroy the parent's copy.
             Config.disableRuntimeCacheWrites()
-            return performDownload(user_session, referer_url)
+            local result = performDownload(user_session, referer_url)
+            if type(result) == "table" then
+                local pool_ok, MirrorPool = pcall(require, "zlibrary.mirror_pool")
+                if pool_ok then
+                    local state_ok, state = pcall(MirrorPool.exportTransportState)
+                    if state_ok then result._mirror_transport_state = state end
+                end
+            end
+            return result
         end, false) -- false: an invisible trap widget that swallows the dismissing tap
     end
 
@@ -377,6 +385,13 @@ function Download.run(self, book)
                     return on_success_download({ success = true })
                 end
                 return on_error_download(T("Download process ended unexpectedly. Please retry."))
+            end
+            if type(api_result) == "table" and api_result._mirror_transport_state then
+                local pool_ok, MirrorPool = pcall(require, "zlibrary.mirror_pool")
+                if pool_ok then
+                    pcall(MirrorPool.applyTransportState, api_result._mirror_transport_state)
+                end
+                api_result._mirror_transport_state = nil
             end
             if api_result.error then
                 return on_error_download(api_result.error)

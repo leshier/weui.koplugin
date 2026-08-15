@@ -14,7 +14,7 @@ touch input, constrained-memory/e-ink refresh assumptions.
 | Onboarding | Welcome, presets, tips | Fresh-install state | First-run flow fits the screen and can finish without trapping the user |
 | Recent/history | Recent modal with sample history | Empty/non-empty paths | Private content remains masked; modal fits between bars |
 | WeRead | Logged-out main menu and offline manager | Progress-sync test | Login path visible; download/library functions are clearly separated |
-| Z-Library | Cached browse, Chinese language picker, account dialog, rich book details | Proxy, UI adapter, download resilience | Bottom bar retained; credentials reachable; Chinese labels complete; no direct connection when proxy protection applies; errors are actionable |
+| Z-Library | Cached browse, Chinese language picker, account dialog, rich book details | Mirror failover, proxy, UI adapter, download resilience | Bottom bar retained; credentials reachable; Chinese labels complete; bounded failover does not replay streams or bypass proxy protection; errors are actionable |
 | Reader | Open TXT document, reader-ready lifecycle | Progress-sync test | Book opens, UI remains responsive, return to library works |
 | Sleep screen | Configured message, box style and vertical position | Settings assertions and suspend/resume log audit | Full-screen grayscale output; custom content is retained; resume does not duplicate bars or lose state |
 | Updater | Check, network gate, download and archive policy | Three updater tests plus live release lookup | Connected Wi-Fi is recognized; fallbacks work; unsafe URLs/archives are rejected; single package only |

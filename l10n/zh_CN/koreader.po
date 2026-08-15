@@ -30,6 +30,9 @@ msgstr "设置"
 msgid "Set base URL"
 msgstr "设置入口网址"
 
+msgid "Automatic server failover"
+msgstr "服务器自动切换"
+
 msgid "Set credentials"
 msgstr "设置账号信息"
 

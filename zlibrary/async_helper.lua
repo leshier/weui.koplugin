@@ -524,10 +524,16 @@ function AsyncHelper.runCancellable(task_func, on_success, on_error, loading_msg
             -- fork, and keeps async_helper out of a require cycle with zlibrary.config.
             require("zlibrary.config").disableRuntimeCacheWrites()
             local ok, result = pcall(task_func)
-            if ok then
-                return { ok = true, data = result }
+            local transport_state
+            local pool_ok, MirrorPool = pcall(require, "zlibrary.mirror_pool")
+            if pool_ok then
+                local state_ok, state = pcall(MirrorPool.exportTransportState)
+                if state_ok then transport_state = state end
             end
-            return { ok = false, err = tostring(result) }
+            if ok then
+                return { ok = true, data = result, mirror_transport_state = transport_state }
+            end
+            return { ok = false, err = tostring(result), mirror_transport_state = transport_state }
         end
 
         -- dismissableRunInSubprocess returns completed=false both for "user dismissed" and for
@@ -561,6 +567,17 @@ function AsyncHelper.runCancellable(task_func, on_success, on_error, loading_msg
             logger.warn("AsyncHelper.runCancellable - no usable result from subprocess, falling back to in-process run")
             AsyncHelper.run(task_func, on_success, on_error, loading_msg_widget_to_close)
             return
+        end
+
+        -- Forked requests cannot safely write the shared runtime cache. Bring
+        -- the chosen mirror and its health scores back through the result pipe
+        -- before the next request is started in the parent process.
+        if envelope.mirror_transport_state then
+            local pool_ok, MirrorPool = pcall(require, "zlibrary.mirror_pool")
+            if pool_ok then
+                safe_call("mirror transport state", MirrorPool.applyTransportState,
+                    envelope.mirror_transport_state)
+            end
         end
 
         if envelope.ok then
