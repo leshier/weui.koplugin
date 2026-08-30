@@ -1,6 +1,9 @@
 local I18n = {}
 
 local zh = {
+    ["WiFi not available on this device."] = "此设备不支持 Wi-Fi。",
+    ["Network manager unavailable."] = "网络管理器不可用。",
+    ["Wi-Fi switch failed."] = "Wi-Fi 切换失败。",
     ["WeRead"] = "微信读书",
     ["Sync WeRead progress"] = "同步微信读书进度",
     ["Bookshelf"] = "书架",

@@ -51,6 +51,7 @@ local N_ = require("weui_i18n").ngettext
 local Config      = require("weui_config")
 local SUISettings = require("weui_store")
 local UI          = require("weui_core")
+local Wifi        = require("weui_wifi")
 
 -- Landscape-aware scaling for the raw pixel/font sizes below that build
 -- SUIWindow modal content directly in this file (icon picker previews, the
@@ -209,39 +210,10 @@ end
 -- Action implementations — self-contained, no bottombar dependency
 -- ---------------------------------------------------------------------------
 
--- doWifiToggle: toggle Wi-Fi and immediately refresh all indicators with the
--- optimistic state before broadcastEvent clears it.
-local function _doWifiToggle(plugin)
-    local ok_hw, has_wifi = pcall(function() return Device:hasWifiToggle() end)
-    if not (ok_hw and has_wifi) then
-        UIManager:show(require("ui/widget/infomessage"):new{ text = _("WiFi not available on this device."), timeout = 2 })
-        return
-    end
-    local ok_nm, NetworkMgr = pcall(require, "ui/network/manager")
-    if not ok_nm or not NetworkMgr then
-        UIManager:show(require("ui/widget/infomessage"):new{ text = _("Network manager unavailable."), timeout = 2 })
-        return
-    end
-    local ok_state, wifi_on = pcall(function() return NetworkMgr:isWifiOn() end)
-    if not ok_state then wifi_on = false end
-    if wifi_on then
-        Config.wifi_optimistic = false
-        pcall(function() NetworkMgr:turnOffWifi() end)
-        UIManager:show(require("ui/widget/infomessage"):new{ text = _("Wi-Fi off"), timeout = 1 })
-    else
-        Config.wifi_optimistic = true
-        local ok_on, err = pcall(function() NetworkMgr:turnOnWifi() end)
-        if not ok_on then
-            logger.warn("weui: Wi-Fi turn-on error:", tostring(err))
-            Config.wifi_optimistic = nil
-        end
-    end
-    -- Refresh all indicators with the optimistic state BEFORE broadcastEvent,
-    -- which triggers onNetworkConnected/Disconnected and clears wifi_optimistic.
+-- Repaint every place that can display the dynamic Wi-Fi state.
+local function _refreshWifiIndicators(plugin)
     if plugin then
-        -- 1. Bottom bar tabs.
         plugin:_rebuildAllNavbars()
-        -- 2. Topbar wifi icon — synchronous so it fires before wifi_optimistic is nil.
         local ok_tb, Topbar = pcall(require, "weui_topbar")
         if ok_tb and Topbar then
             local cfg = Config.getTopbarConfig()
@@ -249,36 +221,26 @@ local function _doWifiToggle(plugin)
                 pcall(function() Topbar.refresh(plugin) end)
             end
         end
-        -- 3. Homescreen quick-action icons — baked into ImageWidgets, need a full rebuild.
         local HS = package.loaded["weui_homescreen"]
         if HS and HS._instance then
             pcall(function() HS.refreshImmediate(false) end)
         end
     end
-    -- Broadcast network events so other KOReader listeners are notified.
-    -- Set wifi_broadcast_self first so onNetworkConnected/Disconnected knows
-    -- the optimistic state was already applied.
-    Config.wifi_broadcast_self = true
-    if wifi_on then
-        pcall(function() UIManager:broadcastEvent(require("ui/event"):new("NetworkDisconnected")) end)
-    else
-        pcall(function() UIManager:broadcastEvent(require("ui/event"):new("NetworkConnected")) end)
-    end
-    Config.wifi_broadcast_self = nil
+end
+
+-- Use KOReader's complete toggle path. It owns network selection, persistent
+-- state, connectivity checks and real network events; we only keep indicators
+-- responsive while Kindle's hardware state catches up.
+local function _doWifiToggle(plugin)
+    Wifi.toggle(function() _refreshWifiIndicators(plugin) end)
 end
 
 -- refreshWifiIcon: called by onNetworkConnected/Disconnected in main.lua.
 -- Clears the optimistic flag (unless we set the broadcast ourselves) and
 -- rebuilds all navbars + homescreen.
 local function _refreshWifiIcon(plugin)
-    if not Config.wifi_broadcast_self then
-        Config.wifi_optimistic = nil
-    end
-    plugin:_rebuildAllNavbars()
-    local HS = package.loaded["weui_homescreen"]
-    if HS and HS.refreshImmediate then
-        pcall(function() HS.refreshImmediate(false) end)
-    end
+    Config.wifi_optimistic = nil
+    _refreshWifiIndicators(plugin)
 end
 
 -- showFrontlightDialog: open the KOReader brightness widget.
