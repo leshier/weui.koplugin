@@ -1,8 +1,8 @@
 name: Release
 
 # Build and publish one downloadable weui.koplugin.zip release asset whenever
-# a version tag (v*) is pushed. Z-Library is vendored inside the WeUI plugin
-# directory, so the archive contains exactly one top-level .koplugin folder.
+# a version tag (v*) is pushed. Both book sources are vendored inside WeUI,
+# so the archive contains exactly one top-level .koplugin folder.
 # The OTA updater downloads this exact filename.
 
 on:
@@ -26,58 +26,29 @@ jobs:
           sudo apt-get install -y -qq luajit gettext
 
       - name: Run release test gate
-        run: LUA_BIN=luajit scripts/run_tests.sh
+        run: |
+          LUA_BIN=luajit scripts/run_tests.sh
+          LUA_BIN=luajit python3 scripts/qa/run_weread_specs.py
 
       - name: Package WeUI
         run: |
           set -euo pipefail
-          # The repo root IS the complete plugin, including the embedded
-          # zlibrary/ module. Extracting into koreader/plugins/ therefore
-          # creates exactly one weui.koplugin/ directory.
-          mkdir -p stage/weui.koplugin
-          rsync -a \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='dist' \
-            --exclude='stage' \
-            --exclude='.gitignore' \
-            --exclude='.DS_Store' \
-            --exclude='.runtime-visual.koplugin' \
-            --exclude='scripts' \
-            --exclude='*.swp' \
-            --exclude='*~' \
-            --exclude='weui_update.zip' \
-            --exclude='zlibrary_credentials.lua' \
-            ./ stage/weui.koplugin/
-          ( cd stage && zip -rq weui.koplugin.zip weui.koplugin )
-          test -f stage/weui.koplugin/LICENSE.zlibrary
-          test -f stage/weui.koplugin/zlibrary/embedded_plugin.lua
-          test -f stage/weui.koplugin/zlibrary/runtime_locale.lua
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION=$(sed -n 's/.*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' _meta.lua)
+            test "$GITHUB_REF_NAME" = "v$VERSION"
+          fi
+          bash scripts/package_release.sh stage
           echo "::group::zip contents"
           unzip -l stage/weui.koplugin.zip | sed -n '1,40p'
           echo "::endgroup::"
-          unzip -tq stage/weui.koplugin.zip
-          unzip -Z1 stage/weui.koplugin.zip > stage/zip-contents.txt
-          mapfile -t roots < <(sed -n 's#^\([^/]*\)/.*#\1#p' \
-            stage/zip-contents.txt | sort -u)
-          test "${#roots[@]}" -eq 1
-          test "${roots[0]}" = "weui.koplugin"
-          if grep -q '^weui.koplugin/scripts/' stage/zip-contents.txt; then
-            echo "test scripts leaked into release package" >&2
-            exit 1
-          fi
-          if grep -q 'zlibrary_credentials.lua$' stage/zip-contents.txt; then
-            echo "credentials leaked into release package" >&2
-            exit 1
-          fi
-          ls -la stage/weui.koplugin.zip
 
       - name: Create release and upload asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION=$(sed -n 's/.*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' _meta.lua)
+          TAG="v$VERSION"
           echo "Publishing release for tag $TAG"
           # Idempotent: create the release if missing, otherwise just (re)upload the asset.
           if gh release view "$TAG" >/dev/null 2>&1; then

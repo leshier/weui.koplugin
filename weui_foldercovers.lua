@@ -492,15 +492,16 @@ local function _installItemCache()
             return _orig_genItemTableFromPath(fc, path)
         end
         local key = _itc_key(path, fc)
-        if _itc and _itc.key == key then return _itc.t end
-        local result = _orig_genItemTableFromPath(fc, path)
+        if _itc and _itc.key == key then return _itc.t, _itc.readable end
+        local result, readable = _orig_genItemTableFromPath(fc, path)
         -- Don't cache virtual series views: their synthetic path has no reliable mtime.
-        if not (result and result._sg_is_series_view) then
-            _itc = { key = key, t = result }
+        -- Failed reads must be retried: permission changes need not alter mtime.
+        if readable ~= false and not (result and result._sg_is_series_view) then
+            _itc = { key = key, t = result, readable = readable }
         else
             _itc = nil
         end
-        return result
+        return result, readable
     end
 end
 

@@ -55,6 +55,7 @@ local logger = require("logger")
 local SUISettings = require("weui_store")
 
 local MODULES = {
+    { require_mod = "desktop_modules/module_dashboard_header" },
     { require_mod = "desktop_modules/module_clock"         },
     { require_mod = "desktop_modules/module_quote"         },
     { require_mod = "desktop_modules/module_currently"     },

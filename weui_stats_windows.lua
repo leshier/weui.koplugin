@@ -2877,6 +2877,350 @@ function StatsWindows.showReadingInsightsWindow(on_close_extra)
 end
 
 -- ===========================================================================
+-- showOverviewWindow
+-- ===========================================================================
+-- Pixel-first overview for the Stats tab: weekly KPI, seven-day bar chart,
+-- 28-day streak dots and a short recent-books list. The detailed Reading
+-- Insights window is still one tap away ("完整阅读洞察").
+function StatsWindows.showOverviewWindow(on_close_extra)
+    _lazyLoad()
+    local SUIWindow = require("weui_window")
+    local Widget    = require("ui/widget/widget")
+    local CenterContainer = require("ui/widget/container/centercontainer")
+
+    local win_ref
+
+    local function makeBar(w, h, color)
+        local bar = Widget:new{ dimen = Geom:new{ w = w, h = h }, color = color }
+        function bar:getSize()
+            return self.dimen
+        end
+        function bar:paintTo(bb, x, y)
+            bb:paintRect(x, y, self.dimen.w, self.dimen.h, self.color)
+        end
+        return bar
+    end
+
+    local function buildRoot(ctx)
+        local SZ = ctx.SZ
+        local inner_w = ctx.inner_w
+        local now = os.time()
+        local t = os.date("*t", now)
+        local midnight = now - (t.hour * 3600 + t.min * 60 + t.sec)
+        local week_start = midnight - 6 * 86400
+
+        -- Data ------------------------------------------------------------
+        local streaks = _ri_streaks or _riGetStreaks()
+        local series = _riGetDailySeries(week_start, midnight + 86400) or {}
+        local by_date = {}
+        for _, row in ipairs(series) do by_date[row.date] = row.seconds or 0 end
+
+        local days = {}
+        local max_sec = 1
+        for i = 0, 6 do
+            local ts = week_start + i * 86400
+            local d = os.date("%Y-%m-%d", ts)
+            local sec = by_date[d] or 0
+            days[#days + 1] = { ts = ts, sec = sec }
+            if sec > max_sec then max_sec = sec end
+        end
+
+        local streak_days = (streaks and streaks.days and streaks.days.current) or 0
+        local best_days = (streaks and streaks.days and streaks.days.best) or 0
+
+        local CLR_BLACK = Blitbuffer.COLOR_BLACK
+        local CLR_GRAY  = Blitbuffer.gray(0.55)
+        local CLR_LINE  = Blitbuffer.gray(0.78)
+        local CLR_LIGHT = Blitbuffer.gray(0.90)
+
+        local face_kpi   = Font:getFace(SUIStyle.FACE_REGULAR, math.floor(SZ(SUIStyle.FS_TITLE * 1.7)))
+        local face_kpi_s = Font:getFace(SUIStyle.FACE_REGULAR, SZ(SUIStyle.FS_DETAIL))
+        local face_label = Font:getFace(SUIStyle.FACE_REGULAR, SZ(SUIStyle.FS_DETAIL))
+        local face_body  = Font:getFace(SUIStyle.FACE_REGULAR, SZ(SUIStyle.FS_BODY))
+        local face_small = Font:getFace(SUIStyle.FACE_REGULAR, SZ(SUIStyle.FS_DETAIL - 1))
+        local face_title = Font:getFace(SUIStyle.FACE_REGULAR, SZ(SUIStyle.FS_SUBTITLE))
+
+        local function pill(text, active, on_tap, w)
+            local label = TextWidget:new{
+                text    = text,
+                face    = face_body,
+                fgcolor = active and Blitbuffer.COLOR_WHITE or CLR_GRAY,
+                bold    = active,
+            }
+            local box = FrameContainer:new{
+                bordersize = 1,
+                color      = active and CLR_BLACK or CLR_LINE,
+                background = active and CLR_BLACK or nil,
+                radius     = SZ(Screen:scaleBySize(12)),
+                padding    = 0,
+                CenterContainer:new{
+                    dimen = Geom:new{ w = w, h = SZ(Screen:scaleBySize(34)) },
+                    label,
+                },
+            }
+            if not on_tap then return box end
+            local btn = InputContainer:new{ dimen = box:getSize(), box }
+            btn.ges_events = {
+                TapStatsPill = {
+                    GestureRange:new{
+                        ges = "tap",
+                        range = function() return btn.dimen end,
+                    },
+                },
+            }
+            function btn:onTapStatsPill()
+                on_tap()
+                return true
+            end
+            return btn
+        end
+
+        local function openInsights()
+            if win_ref then win_ref:close() end
+            UIManager:nextTick(function()
+                StatsWindows.showReadingInsightsWindow(on_close_extra)
+            end)
+        end
+
+        -- Period tabs -----------------------------------------------------
+        local period_gap = SZ(Screen:scaleBySize(8))
+        local period_w = math.floor((inner_w - period_gap * 3) / 4)
+        local period_row = HorizontalGroup:new{ align = "center",
+            pill(_("Week"), true, nil, period_w),
+            HorizontalSpan:new{ width = period_gap },
+            pill(_("Month"), false, openInsights, period_w),
+            HorizontalSpan:new{ width = period_gap },
+            pill(_("Year"), false, openInsights, period_w),
+            HorizontalSpan:new{ width = period_gap },
+            pill(_("All time"), false, openInsights, period_w),
+        }
+
+        -- KPI -------------------------------------------------------------
+        -- Use the same rolling seven-day window as the bars below, so the
+        -- headline number can never disagree with the chart (a Monday-only
+        -- calendar-week sum used to show 42m next to seven days of bars).
+        local week_secs = 0
+        for _, d in ipairs(days) do week_secs = week_secs + d.sec end
+        local avg_min = math.floor(week_secs / 7 / 60)
+        local kpi_hours = math.floor(week_secs / 3600)
+        local kpi_mins  = math.floor((week_secs % 3600) / 60)
+
+        local function kpiBig(text)
+            return TextWidget:new{ text = text, face = face_kpi, bold = true, fgcolor = CLR_BLACK }
+        end
+        local function kpiUnit(text)
+            return TextWidget:new{ text = text, face = face_kpi_s, fgcolor = CLR_GRAY }
+        end
+        local kpi_numbers = HorizontalGroup:new{ align = "bottom" }
+        if kpi_hours > 0 then
+            kpi_numbers[#kpi_numbers + 1] = kpiBig(tostring(kpi_hours))
+            kpi_numbers[#kpi_numbers + 1] = HorizontalSpan:new{ width = SZ(Screen:scaleBySize(2)) }
+            kpi_numbers[#kpi_numbers + 1] = kpiUnit(_("hours"))
+            kpi_numbers[#kpi_numbers + 1] = HorizontalSpan:new{ width = SZ(Screen:scaleBySize(4)) }
+            kpi_numbers[#kpi_numbers + 1] = kpiBig(tostring(kpi_mins))
+            kpi_numbers[#kpi_numbers + 1] = HorizontalSpan:new{ width = SZ(Screen:scaleBySize(2)) }
+            kpi_numbers[#kpi_numbers + 1] = kpiUnit(_("min"))
+        else
+            kpi_numbers[#kpi_numbers + 1] = kpiBig(tostring(kpi_mins))
+            kpi_numbers[#kpi_numbers + 1] = HorizontalSpan:new{ width = SZ(Screen:scaleBySize(2)) }
+            kpi_numbers[#kpi_numbers + 1] = kpiUnit(_("min"))
+        end
+        local kpi = VerticalGroup:new{ align = "left",
+            TextWidget:new{
+                text = _("This week"),
+                face = face_label,
+                fgcolor = CLR_GRAY,
+                bold = true,
+            },
+            VerticalSpan:new{ width = SZ(Screen:scaleBySize(3)) },
+            kpi_numbers,
+            VerticalSpan:new{ width = SZ(Screen:scaleBySize(5)) },
+            TextWidget:new{
+                text = string.format(_("%d min/day  ·  %d-day streak"), avg_min, streak_days),
+                face = face_body,
+                fgcolor = CLR_GRAY,
+            },
+        }
+
+        -- Seven-day bars ---------------------------------------------------
+        local card_pad   = SZ(Screen:scaleBySize(14))
+        local card_inner = inner_w - card_pad * 2 - 2
+        local chart_h = SZ(Screen:scaleBySize(max_sec <= 1 and 70 or 118))
+        local bar_gap = SZ(Screen:scaleBySize(8))
+        local bar_col_w = math.floor((card_inner - bar_gap * 6) / 7)
+        local bar_w = math.max(SZ(Screen:scaleBySize(8)), math.floor(bar_col_w * 0.58))
+        local chart_cols = HorizontalGroup:new{ align = "bottom" }
+        local week_chars = { _("Mon"), _("Tue"), _("Wed"), _("Thu"), _("Fri"), _("Sat"), _("Sun") }
+        for i, d in ipairs(days) do
+            local mins = math.floor(d.sec / 60)
+            local h = (d.sec > 0) and math.max(4, math.floor(chart_h * d.sec / max_sec)) or 2
+            local color = (i == #days) and CLR_BLACK or CLR_LIGHT
+            local bar = makeBar(bar_w, h, color)
+            local col = VerticalGroup:new{ align = "center",
+                TextWidget:new{
+                    text = tostring(mins),
+                    face = face_small,
+                    fgcolor = (i == #days) and CLR_BLACK or CLR_GRAY,
+                },
+                VerticalSpan:new{ width = SZ(Screen:scaleBySize(3)) },
+                VerticalGroup:new{ align = "center",
+                    VerticalSpan:new{ width = chart_h - h },
+                    bar,
+                },
+                VerticalSpan:new{ width = SZ(Screen:scaleBySize(6)) },
+                TextWidget:new{
+                    text = week_chars[i] or "",
+                    face = face_small,
+                    fgcolor = (i == #days) and CLR_BLACK or CLR_GRAY,
+                    bold = (i == #days),
+                },
+            }
+            chart_cols[#chart_cols + 1] = CenterContainer:new{
+                dimen = Geom:new{ w = bar_col_w, h = col:getSize().h },
+                col,
+            }
+            if i < #days then
+                chart_cols[#chart_cols + 1] = HorizontalSpan:new{ width = bar_gap }
+            end
+        end
+
+        local chart_visual = chart_cols
+        if max_sec <= 1 then
+            chart_visual = VerticalGroup:new{ align = "center",
+                VerticalSpan:new{ width = SZ(Screen:scaleBySize(8)) },
+                TextWidget:new{
+                    text = _("No reading yet this week."),
+                    face = face_body,
+                    fgcolor = CLR_GRAY,
+                },
+                VerticalSpan:new{ width = SZ(Screen:scaleBySize(8)) },
+                chart_cols,
+            }
+        end
+
+        local chart_title = TextWidget:new{ text = _("Daily reading"), face = face_title, bold = true }
+        local chart_unit  = TextWidget:new{ text = _("minutes"), face = face_small, fgcolor = CLR_GRAY }
+        local chart_head = HorizontalGroup:new{ align = "bottom",
+            chart_title,
+            HorizontalSpan:new{ width = math.max(0,
+                card_inner - chart_title:getSize().w - chart_unit:getSize().w) },
+            chart_unit,
+        }
+
+        local chart_card = FrameContainer:new{
+            bordersize = 1,
+            color      = CLR_LINE,
+            radius     = SZ(Screen:scaleBySize(14)),
+            padding    = card_pad,
+            width      = inner_w,
+            VerticalGroup:new{ align = "left",
+                chart_head,
+                VerticalSpan:new{ width = SZ(Screen:scaleBySize(10)) },
+                chart_visual,
+            },
+        }
+
+        -- Streak dots ------------------------------------------------------
+        local dot_days = 28
+        local dot_start = midnight - (dot_days - 1) * 86400
+        local dot_series = _riGetDailySeries(dot_start, midnight + 86400) or {}
+        local dot_set = {}
+        for _, row in ipairs(dot_series) do dot_set[row.date] = (row.seconds or 0) > 0 end
+        local face_dot  = Font:getFace(SUIStyle.FACE_REGULAR, SZ(SUIStyle.FS_DETAIL))
+        local dot_cell_w = math.floor(card_inner / 7)
+        local dot_h      = SZ(Screen:scaleBySize(19))
+        local dot_rows = {}
+        for row_i = 0, 3 do
+            local row = HorizontalGroup:new{ align = "center" }
+            for col_i = 0, 6 do
+                local ts = dot_start + (row_i * 7 + col_i) * 86400
+                local on = dot_set[os.date("%Y-%m-%d", ts)]
+                row[#row + 1] = CenterContainer:new{
+                    dimen = Geom:new{ w = dot_cell_w, h = dot_h },
+                    TextWidget:new{
+                        text    = on and "●" or "○",
+                        face    = face_dot,
+                        fgcolor = on and CLR_BLACK or CLR_GRAY,
+                    },
+                }
+            end
+            dot_rows[#dot_rows + 1] = row
+        end
+        local dot_grid = VerticalGroup:new{ align = "left" }
+        for _, r in ipairs(dot_rows) do
+            dot_grid[#dot_grid + 1] = r
+            dot_grid[#dot_grid + 1] = VerticalSpan:new{ width = SZ(Screen:scaleBySize(2)) }
+        end
+
+        local streak_card = FrameContainer:new{
+            bordersize = 1,
+            color      = CLR_LINE,
+            radius     = SZ(Screen:scaleBySize(14)),
+            padding    = card_pad,
+            width      = inner_w,
+            VerticalGroup:new{ align = "left",
+                HorizontalGroup:new{ align = "bottom",
+                    TextWidget:new{
+                        text = tostring(streak_days),
+                        face = face_kpi,
+                        bold = true,
+                        fgcolor = CLR_BLACK,
+                    },
+                    HorizontalSpan:new{ width = SZ(Screen:scaleBySize(8)) },
+                    VerticalGroup:new{ align = "left",
+                        TextWidget:new{
+                            text = _("day streak"),
+                            face = face_body,
+                            bold = true,
+                        },
+                        VerticalSpan:new{ width = SZ(Screen:scaleBySize(2)) },
+                        TextWidget:new{
+                            text = string.format(_("best %d"), best_days),
+                            face = face_small,
+                            fgcolor = CLR_GRAY,
+                        },
+                    },
+                },
+                VerticalSpan:new{ width = SZ(Screen:scaleBySize(8)) },
+                dot_grid,
+            },
+        }
+
+        -- Single screen: the old two-page split left page 1 half-empty even
+        -- though tabs + KPI + chart + streak fit on a 6" screen together.
+        -- The full insights window stays reachable from the Month/Year/All
+        -- period tabs; a second link row would push the card under the bar.
+        return {
+            VerticalGroup:new{ align = "left",
+                VerticalSpan:new{ width = SZ(Screen:scaleBySize(2)) },
+                period_row,
+                VerticalSpan:new{ width = SZ(Screen:scaleBySize(10)) },
+                kpi,
+                VerticalSpan:new{ width = SZ(Screen:scaleBySize(10)) },
+                chart_card,
+                VerticalSpan:new{ width = SZ(Screen:scaleBySize(10)) },
+                streak_card,
+            },
+        }
+    end
+
+    local win = SUIWindow:new{
+        name          = "weui_win_stats_overview",
+        title         = function() return _("Reading Stats") end,
+        width         = select(1, UI.getPortraitDims()),
+        height        = UI.getContentHeight(),
+        position      = "bottom",
+        navpager_mode = Config.isNavpagerEnabled and Config.isNavpagerEnabled() or false,
+        screens       = { __root__ = buildRoot },
+        on_close      = function()
+            if on_close_extra then on_close_extra() end
+        end,
+    }
+    win_ref = win
+    win:show()
+end
+
+-- ===========================================================================
 -- showStreakManagerWindow
 -- ===========================================================================
 -- Opens the Streak Manager window: current streak header, last-read date,

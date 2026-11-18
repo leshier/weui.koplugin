@@ -85,6 +85,42 @@ local _raiseHSFromStack  -- forward declaration; defined below near closeReaderT
 -- UIManager._weui_close_plugin pattern used by patchUIManagerClose.
 local _live_plugin = nil
 
+-- Native FileManager construction may drain the repaint queue while waiting
+-- for CoverBrowser metadata. Keep the last reader frame above it until the
+-- requested paper destination has actually been built.
+local function beginPaperReturn()
+    if UIManager._weui_paper_return_blocker then return function() end end
+    local WidgetContainer = require("ui/widget/container/widgetcontainer")
+    local snapshot = Screen.bb:copy()
+    local blocker = WidgetContainer:new{
+        modal = true, covers_fullscreen = true,
+        dimen = Screen:getSize(),
+        _navbar_skip_inject = true, _navbar_closing_intentionally = true,
+        _weui_paper_return_blocker = true,
+    }
+    function blocker:paintTo(bb, x, y)
+        if snapshot then
+            bb:blitFrom(snapshot, x, y, 0, 0,
+                math.min(snapshot:getWidth(), bb:getWidth() - x),
+                math.min(snapshot:getHeight(), bb:getHeight() - y))
+        end
+    end
+    function blocker:onCloseWidget()
+        if snapshot then snapshot:free(); snapshot = nil end
+        if UIManager._weui_paper_return_blocker == self then
+            UIManager._weui_paper_return_blocker = nil
+        end
+    end
+    UIManager._weui_paper_return_blocker = blocker
+    local show = UIManager._weui_show_orig or UIManager.show
+    show(UIManager, blocker, "ui")
+    return function()
+        if snapshot then
+            (UIManager._weui_close_orig or UIManager.close)(UIManager, blocker)
+        end
+    end
+end
+
 -- Ensure the goal-tap callback is initialised. Called before any HS.show()
 -- or _raiseHSFromStack() that may need it. Idempotent: addToMainMenu is a
 -- no-op once _goalTapCallback has been set.
@@ -2431,6 +2467,17 @@ function M.patchUIManagerClose(plugin)
 
         local result = orig_close(um_self, widget, ...)
 
+        -- Native Close/Home may close the reader without first constructing
+        -- an FM. Restore its paper origin synchronously before the stack can
+        -- drain. Reloads and explicit tab navigation own their destination.
+        local Paper = package.loaded["weui_paper"]
+        if widget.name == "ReaderUI" and Paper and Paper._reader_origin
+                and not widget.tearing_down and not widget._navbar_closing_intentionally
+                and not UIManager._weui_reload_in_progress and UIManager._exit_code == nil then
+            widget:showFileManager()
+            return result
+        end
+
         -- Reload-triggered reopen: the ReaderUI we just closed is about to
         -- be rebuilt for the same file, inside the same reloadDocument()
         -- call still executing further up the stack (see patchReloadDocument).
@@ -2970,6 +3017,15 @@ end
 
 function M.showHSAfterResume(plugin, force)
     if not (force or isStartWithHS()) then return end
+    -- Launch preference must not replace an existing paper page on wakeup.
+    -- This also applies while a delayed/gesture screensaver still covers it.
+    local Paper = package.loaded["weui_paper"]
+    local page = Paper and Paper._instance
+    if not force and page and not page._closed then
+        for _, entry in ipairs(UI.getWindowStack()) do
+            if entry.widget == page then return end
+        end
+    end
 
     local RUI = package.loaded["apps/reader/readerui"]
     if RUI and RUI.instance then
@@ -3471,6 +3527,7 @@ end
 -- Returns: file, return_to_folder, prev_action
 -- ---------------------------------------------------------------------------
 local function _prepareReaderClose(plugin, readerui, via_gesture, force_homescreen)
+    if force_homescreen then require("weui_paper").clearReaderOrigin() end
     local file = readerui.document and readerui.document.file
     local return_to_folder = not force_homescreen
         and SUISettings:isTrue("weui_hs_return_to_book_folder")
@@ -3516,30 +3573,35 @@ local function _closeReaderToHomescreenSync(plugin, readerui, file,
                                              return_to_folder, prev_action)
     if UIManager._exit_code ~= nil then return end
 
-    readerui:onClose(false)
-    -- showFileManager(file) navigates the FM to the book's parent folder
-    -- (last_dir derived from file path) — mirrors native behaviour.
-    readerui:showFileManager(file)
+    local finish = beginPaperReturn()
+    local ok, err = pcall(function()
+        readerui:onClose(false)
+        -- showFileManager(file) navigates the FM to the book's parent folder.
+        readerui:showFileManager(file)
 
-    -- When "Return to Book Folder" is on: close the reader and land in the FM
-    -- at the book's folder with no HS — identical to native KOReader.
-    if return_to_folder then
-        plugin.active_action = "home"
-        return
-    end
+        local Paper = package.loaded["weui_paper"]
+        if Paper and Paper._instance and not Paper._instance._closed
+                and Paper._instance.plugin.ui == liveFM() then return end
 
-    -- Default path: raise or show the Homescreen on top of the FM.
-    local HS = liveHS() or (function()
-        local ok, m = pcall(require, "weui_homescreen"); return ok and m
-    end)()
-    if not HS then return end
+        if return_to_folder then
+            plugin.active_action = "home"
+            return
+        end
 
-    local fm_ref = liveFM()
-    _closeOrphanedPopups(fm_ref, HS._instance)
-    if _raiseHSFromStack(plugin, prev_action) then return end
+        local HS = liveHS() or (function()
+            local ok, m = pcall(require, "weui_homescreen"); return ok and m
+        end)()
+        if not HS then return end
 
-    if HS._instance then return end
-    _showHSCold(plugin, HS, prev_action)
+        local fm_ref = liveFM()
+        _closeOrphanedPopups(fm_ref, HS._instance)
+        if _raiseHSFromStack(plugin, prev_action) then return end
+
+        if HS._instance then return end
+        _showHSCold(plugin, HS, prev_action)
+    end)
+    finish()
+    if not ok then error(err, 0) end
 end
 
 -- via_gesture: true (default) for gesture-triggered closes, false for menu-triggered.
@@ -3699,7 +3761,12 @@ function M.patchReaderShowCoroutine(plugin)
     ReaderUI._weui_show_coroutine_patched = true
 
     local orig = ReaderUI.showReaderCoroutine
+    ReaderUI._weui_show_coroutine_orig = orig
     ReaderUI.showReaderCoroutine = function(self, file, provider, seamless)
+        if not UIManager._weui_reload_in_progress and not seamless then
+            local Paper = package.loaded["weui_paper"]
+            if Paper then Paper.suspendForReader() end
+        end
         -- Reload-triggered reopen (font size, margins, line spacing, ...):
         -- never engage the CoverTransition open side for it — no cover flash
         -- wanted for an internal reload. KOReader's own "Opening file
@@ -3712,6 +3779,27 @@ function M.patchReaderShowCoroutine(plugin)
         end
         return orig(self, file, provider, seamless)
     end
+
+    local orig_fm = ReaderUI.showFileManager
+    ReaderUI._weui_show_fm_orig = orig_fm
+    ReaderUI.showFileManager = function(self, ...)
+        local Paper = package.loaded["weui_paper"]
+        local finish = Paper and Paper._reader_origin and beginPaperReturn()
+        local args = { n = select("#", ...), ... }
+        local ok, result = pcall(function()
+            local result = orig_fm(self, table.unpack(args, 1, args.n))
+            if not UIManager._weui_reload_in_progress and UIManager._exit_code == nil
+                    and not ReaderUI.instance then
+                local Paper = package.loaded["weui_paper"]
+                local fm = liveFM()
+                if Paper and fm then Paper.restoreAfterReader(fm._weui_plugin) end
+            end
+            return result
+        end)
+        if finish then finish() end
+        if not ok then error(result, 0) end
+        return result
+    end
 end
 
 
@@ -3722,7 +3810,8 @@ function M.wireReaderMenuFMTab(plugin, readerui)
     local items = menu_ref.menu_items
     if not (items and items.filemanager) then return end
 
-    items.filemanager.callback = function()
+    local native_callback = items.filemanager.callback
+    local return_callback = function()
         -- Mirrors native KOReader's synchronous sequence exactly:
         --   onTapCloseMenu → onClose(false) → showFileManager [→ HS]
         --
@@ -3749,6 +3838,18 @@ function M.wireReaderMenuFMTab(plugin, readerui)
             _prepareReaderClose(plugin, readerui, false)
         _closeReaderToHomescreenSync(plugin, readerui, file,
                                      return_to_folder, prev_action)
+    end
+    items.filemanager.callback = return_callback
+    -- setUpdateItemTable creates fresh default buttons before MenuSorter
+    -- consumes menu_items. Patch that factory too, so the visible menu uses
+    -- this callback on its first show and on every subsequent rebuild.
+    local orig_buttons = menu_ref.getDefaultMenuButtons
+    menu_ref._weui_fm_tab_orig_buttons = orig_buttons
+    menu_ref._weui_fm_tab_native_callback = native_callback
+    menu_ref.getDefaultMenuButtons = function(self, ...)
+        local buttons = orig_buttons(self, ...)
+        if buttons.filemanager then buttons.filemanager.callback = return_callback end
+        return buttons
     end
     menu_ref._weui_fm_tab_wrapped = true
 end
@@ -3799,7 +3900,9 @@ end
 function M.closeReaderToLibrary(plugin, after_close)
     local RUI = package.loaded["apps/reader/readerui"]
     if not (RUI and RUI.instance) then return end
+    require("weui_paper").clearReaderOrigin()
     local readerui = RUI.instance
+    local finish = beginPaperReturn()
 
     -- _navbar_closing_intentionally on the widget makes the patched
     -- UIManager.close skip the entire HS re-open block (see the guard at the
@@ -3809,42 +3912,47 @@ function M.closeReaderToLibrary(plugin, after_close)
 
     local file = readerui.document and readerui.document.file
     plugin._closing_via_gesture = true
-    readerui:onClose()
-    -- onClose() calls UIManager:close(self.dialog) which runs synchronously,
-    -- so the flag has already been consumed. No need to clear it.
-    readerui:showFileManager(file)
+    local ok_close, close_err = pcall(function()
+        readerui:onClose(false)
+        readerui:showFileManager(file)
+    end)
+    if not ok_close then finish(); error(close_err, 0) end
 
     -- After the FM appears, navigate to home_dir and rebuild the navbar.
     UIManager:scheduleIn(0, function()
-        local fm_ref = liveFM()
-        if not fm_ref then return end
-        local home = G_reader_settings:readSetting("home_dir")
-        local lfs  = require("libs/libkoreader-lfs")
-        if not home or lfs.attributes(home, "mode") ~= "directory" then
-            home = require("device").home_dir
-        end
-        if home and fm_ref.file_chooser then
-            fm_ref._navbar_suppress_path_change = true
-            fm_ref.file_chooser:changeToPath(home)
-            fm_ref._navbar_suppress_path_change = nil
-            if fm_ref.updateTitleBarPath then
-                pcall(function() fm_ref:updateTitleBarPath(home, true) end)
+        local ok, err = pcall(function()
+            local fm_ref = liveFM()
+            if not fm_ref then return end
+            local home = G_reader_settings:readSetting("home_dir")
+            local lfs  = require("libs/libkoreader-lfs")
+            if not home or lfs.attributes(home, "mode") ~= "directory" then
+                home = require("device").home_dir
             end
-        elseif fm_ref.file_chooser then
-            fm_ref.file_chooser:refreshPath()
-        end
-        local tabs = Config.loadTabConfig()
-        plugin.active_action = "home"
-        local live_plugin = fm_ref._weui_plugin or plugin
-        live_plugin.active_action = "home"
-        Bottombar.replaceBar(fm_ref, Bottombar.buildBarWidget("home", tabs), tabs)
-        UIManager:setDirty(fm_ref, "ui")
-        if type(after_close) == "function" then
-            local ok_cb, cb_err = pcall(after_close, fm_ref)
-            if not ok_cb then
-                logger.warn("weui: post-reader navigation failed:", tostring(cb_err))
+            if home and fm_ref.file_chooser then
+                fm_ref._navbar_suppress_path_change = true
+                fm_ref.file_chooser:changeToPath(home)
+                fm_ref._navbar_suppress_path_change = nil
+                if fm_ref.updateTitleBarPath then
+                    pcall(function() fm_ref:updateTitleBarPath(home, true) end)
+                end
+            elseif fm_ref.file_chooser then
+                fm_ref.file_chooser:refreshPath()
             end
-        end
+            local tabs = Config.loadTabConfig()
+            plugin.active_action = "home"
+            local live_plugin = fm_ref._weui_plugin or plugin
+            live_plugin.active_action = "home"
+            Bottombar.replaceBar(fm_ref, Bottombar.buildBarWidget("home", tabs), tabs)
+            UIManager:setDirty(fm_ref, "ui")
+            if type(after_close) == "function" then
+                local ok_cb, cb_err = pcall(after_close, fm_ref)
+                if not ok_cb then
+                    logger.warn("weui: post-reader navigation failed:", tostring(cb_err))
+                end
+            end
+        end)
+        finish()
+        if not ok then error(err, 0) end
     end)
 end
 
@@ -4614,9 +4722,13 @@ function M.patchScreensaverWeb()
 
     local orig_setup = Screensaver.setup
     local orig_show = Screensaver.show
+    Screensaver._weui_web_orig_setup = orig_setup
+    Screensaver._weui_web_orig_show = orig_show
     function Screensaver:setup(event, event_message, ...)
         orig_setup(self, event, event_message, ...)
 
+        local Lock = package.loaded["weui_lockscreen"]
+        if Lock and Lock.getMode() ~= "native" and not event then return end
         if not M.isScreensaverWebEnabled() then return end
 
         -- Try to download fresh image in the background (async).
@@ -4659,6 +4771,7 @@ end
 
 
 function M.installAll(plugin)
+    require("weui_sdl_input").install()
     M.patchPurgeDir(plugin)
     local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
     if ok_fm and FileManager then M.patchDeleteFile(FileManager, plugin) end
@@ -4678,6 +4791,7 @@ function M.installAll(plugin)
     M.patchResetSettingsButton(plugin)
     M.patchFontGetFace(plugin)
     M.patchScreensaverWeb()
+    require("weui_lockscreen").install()
     -- Install the FM + Reader tab icon patches so system icon overrides
     -- survive menu rebuilds.
     local ok_ss, SUIStyle = pcall(require, "weui_style")
@@ -4730,10 +4844,46 @@ function M.installAll(plugin)
 end
 
 function M.teardownAll(plugin)
+    local SDLInput = package.loaded["weui_sdl_input"]
+    if SDLInput then SDLInput.uninstall() end
+    local Lock = package.loaded["weui_lockscreen"]
+    if Lock then Lock.uninstall() end
+    local Screensaver = package.loaded["ui/screensaver"]
+    if Screensaver and Screensaver._weui_web_patched then
+        Screensaver.setup = Screensaver._weui_web_orig_setup
+        Screensaver.show = Screensaver._weui_web_orig_show
+        Screensaver._weui_web_orig_setup, Screensaver._weui_web_orig_show = nil, nil
+        Screensaver._weui_web_patched = nil
+    end
     -- Cover Transition holds no monkey-patch of its own (it is only ever
     -- invoked from hooks owned by other patches in this file), but it can
     -- have a widget on screen or a pending auto-close timer at teardown time.
     pcall(CoverTransition.close)
+    local return_blocker = UIManager._weui_paper_return_blocker
+    if return_blocker then
+        (UIManager._weui_close_orig or UIManager.close)(UIManager, return_blocker)
+    end
+    local ReaderUI = package.loaded["apps/reader/readerui"]
+    local reader = ReaderUI and ReaderUI.instance
+    local menu = reader and reader.menu
+    if menu and menu._weui_fm_tab_orig_buttons then
+        menu.getDefaultMenuButtons = menu._weui_fm_tab_orig_buttons
+        local native_callback = menu._weui_fm_tab_native_callback
+        if menu.menu_items and menu.menu_items.filemanager then menu.menu_items.filemanager.callback = native_callback end
+        for _, tab in ipairs(menu.tab_item_table or {}) do
+            if tab.id == "filemanager" then tab.callback = native_callback end
+        end
+        menu._weui_fm_tab_orig_buttons, menu._weui_fm_tab_native_callback = nil, nil
+        menu._weui_fm_tab_wrapped = nil
+    end
+    if ReaderUI and ReaderUI._weui_show_coroutine_patched then
+        ReaderUI.showReaderCoroutine = ReaderUI._weui_show_coroutine_orig
+        ReaderUI.showFileManager = ReaderUI._weui_show_fm_orig
+        ReaderUI._weui_show_coroutine_orig, ReaderUI._weui_show_fm_orig = nil, nil
+        ReaderUI._weui_show_coroutine_patched = nil
+    end
+    local Paper = package.loaded["weui_paper"]
+    if Paper then Paper.clearReaderOrigin() end
 
     -- Restore ffi/util.purgeDir patch.
     local ffiUtil = package.loaded["ffi/util"]

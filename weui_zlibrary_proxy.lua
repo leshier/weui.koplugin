@@ -689,7 +689,9 @@ function M.probe()
     if type(target) ~= "string" or target == "" then
         return { ok = false, error = _("No Z-Library server address is available.") }
     end
-    target = target:gsub("/+$", "") .. "/"
+    -- Probe the same small API endpoint used by Z-Library health checks.
+    -- Some mirrors stall HEAD requests to their public website indefinitely.
+    target = target:gsub("/+$", "") .. "/eapi/info/ok"
 
     local old_block, old_total = socketutil.block_timeout, socketutil.total_timeout
     local saved_proxy = http.PROXY
@@ -699,7 +701,7 @@ function M.probe()
     local ok_request, response = protectedCall(function()
         local _, code = proxyHttpRequest({
             url = target,
-            method = "HEAD",
+            method = "GET",
             headers = { ["User-Agent"] = socketutil.USER_AGENT },
             sink = ltn12.sink.null(),
             redirect = false,
@@ -765,6 +767,7 @@ local function editSetting(opts)
                         return
                     end
                     UIManager:close(dialog)
+                    if opts.on_change then opts.on_change() end
                 end,
             },
         }},
@@ -773,18 +776,19 @@ local function editSetting(opts)
     dialog:onShowKeyboard()
 end
 
-local function editAddress()
+local function editAddress(on_change)
     editSetting{
+        on_change = on_change,
         title = _("Z-Library proxy server"),
         input = SUISettings:get(KEY_URL) or "",
-        hint = "http://192.168.1.2:7890",
+        hint = "socks5://192.168.1.2:1080",
         description = _("HTTP CONNECT: http://host:port\nSOCKS5 with remote DNS: socks5://host:port"),
         save = function(value)
             value = trim(value)
             if value == "" then
                 return false, _("Proxy address cannot be empty.")
             end
-            if not value:match("^[%a][%w+.-]*://") then value = "http://" .. value end
+            if not value:match("^[%a][%w+.-]*://") then value = "socks5://" .. value end
             local old = SUISettings:get(KEY_URL)
             SUISettings:set(KEY_URL, value)
             local cfg, err = readConfig()
@@ -798,8 +802,9 @@ local function editAddress()
     }
 end
 
-local function editUsername()
+local function editUsername(on_change)
     editSetting{
+        on_change = on_change,
         title = _("Proxy username"),
         input = SUISettings:get(KEY_USERNAME) or "",
         hint = _("Optional"),
@@ -813,10 +818,11 @@ local function editUsername()
     }
 end
 
-local function editPassword()
+local function editPassword(on_change)
     local configured = type(SUISettings:get(KEY_PASSWORD)) == "string"
         and SUISettings:get(KEY_PASSWORD) ~= ""
     editSetting{
+        on_change = on_change,
         title = _("Proxy password"),
         input = "",
         hint = configured and _("Enter a replacement, or leave empty to clear") or _("Optional"),
@@ -876,7 +882,7 @@ function M.testFromUI()
     end)
 end
 
-local function clearSettings()
+local function clearSettings(on_change)
     local UIManager = require("ui/uimanager")
     local ConfirmBox = require("ui/widget/confirmbox")
     UIManager:show(ConfirmBox:new{
@@ -887,12 +893,13 @@ local function clearSettings()
             SUISettings:del(KEY_URL)
             SUISettings:del(KEY_USERNAME)
             SUISettings:del(KEY_PASSWORD)
+            if on_change then on_change() end
             showInfo(_("Z-Library proxy settings cleared."), 3)
         end,
     })
 end
 
-function M.getMenuItems()
+function M.getMenuItems(on_change)
     return {
         {
             text = _("Use proxy for all Z-Library traffic"),
@@ -901,6 +908,7 @@ function M.getMenuItems()
             callback = function()
                 if M.isEnabled() then
                     SUISettings:set(KEY_ENABLED, false)
+                    if on_change then on_change() end
                     showInfo(_("Z-Library proxy disabled."), 3)
                     return
                 end
@@ -911,6 +919,7 @@ function M.getMenuItems()
                 end
                 SUISettings:set(KEY_ENABLED, true)
                 M.install()
+                if on_change then on_change() end
                 showInfo(_("Z-Library proxy enabled. If the proxy fails, Z-Library will not connect directly."), 4)
             end,
         },
@@ -919,14 +928,14 @@ function M.getMenuItems()
                 local cfg = readConfig()
                 return _("Proxy server") .. ": " .. (cfg and proxyLabel(cfg) or _("Not configured"))
             end,
-            callback = editAddress,
+            callback = function() editAddress(on_change) end,
         },
         {
             text_func = function()
                 local value = trim(SUISettings:get(KEY_USERNAME))
                 return _("Proxy username") .. ": " .. (value ~= "" and _("Set") or _("Not set"))
             end,
-            callback = editUsername,
+            callback = function() editUsername(on_change) end,
         },
         {
             text_func = function()
@@ -934,7 +943,7 @@ function M.getMenuItems()
                 return _("Proxy password") .. ": "
                     .. (type(value) == "string" and value ~= "" and _("Set") or _("Not set"))
             end,
-            callback = editPassword,
+            callback = function() editPassword(on_change) end,
         },
         {
             text = _("Test proxy connection"),
@@ -954,7 +963,7 @@ HTTP proxies use CONNECT for HTTPS. SOCKS5 sends target hostnames to the proxy f
         },
         {
             text = _("Clear proxy settings"),
-            callback = clearSettings,
+            callback = function() clearSettings(on_change) end,
         },
     }
 end

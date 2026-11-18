@@ -56,4 +56,10 @@ set -e
 printf 'KOReader exit: %s\n' "$status"
 printf 'Results: %s\n' "$qa_root/artifacts/results.tsv"
 printf 'Log: %s\n' "$qa_root/artifacts/koreader.log"
+if [ ! -f "$qa_root/artifacts/results.tsv" ]; then
+    status=1
+else
+    awk -F '\t' '$1 == "FAIL" { failed = 1 } $1 == "PASS" && $2 == "suite" { complete = 1 }
+        END { exit failed || !complete }' "$qa_root/artifacts/results.tsv" || status=1
+fi
 exit "$status"

@@ -1075,7 +1075,7 @@ function M.apply(fm_self)
     end
     if tb.setTitle then
         fm_self._titlebar_orig_title_set = true
-        tb:setTitle(show_title and _("Library") or "")
+        tb:setTitle(show_title and _("Bookshelf") or "")
     end
 end
 

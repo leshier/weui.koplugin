@@ -9,7 +9,11 @@ Third-party material:
 - fonts/NotoEmoji-Regular.ttf
   Copyright 2013 Google LLC
   Licensed under the SIL Open Font License, Version 1.1.
-  See fonts/LICENSE for the complete license text.
+  See fonts/NotoEmoji-OFL.txt for the complete license text.
+
+WeUI vendors the namespaced weread/ modules from version 1.7.0,
+commit cf39ef68a1b02d11a37bddf70fc9a6b630f21f18. Host adaptations and test
+fixture adjustments are documented in weread/UPSTREAM.md.
 
 This is an unofficial project. It is not affiliated with, endorsed by, or
 sponsored by WeRead, Tencent, or KOReader. All product names and trademarks

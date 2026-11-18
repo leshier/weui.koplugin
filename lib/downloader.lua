@@ -291,6 +291,7 @@ function Downloader:_updateTask(task, fields)
     end
     task.updated_at = os.time()
     self:_syncTaskDialog(task)
+    if self.task_updated then self.task_updated(task) end
     -- Close the progress window on ANY terminal state, including "failed".
     -- Otherwise a failed download leaves the window open with a now-defunct
     -- "Cancel download" button (cancelTask is a no-op on terminal tasks),
@@ -394,6 +395,10 @@ end
 
 function Downloader:showTask(task)
     if not task then return end
+    if self.show_task and self.show_task(task) then
+        task.hidden = false
+        return
+    end
     if task.dialog then
         self:_syncTaskDialog(task)
         return

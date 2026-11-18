@@ -259,9 +259,13 @@ end
 
 local function openReadingInsights()
     local ok, SW = pcall(require, "weui_stats_windows")
-    if ok and SW and SW.showReadingInsightsWindow then
+    if ok and SW and (SW.showOverviewWindow or SW.showReadingInsightsWindow) then
         if SW.showLoadingNotice then SW.showLoadingNotice() end
-        SW.showReadingInsightsWindow()
+        if SW.showOverviewWindow then
+            SW.showOverviewWindow()
+        else
+            SW.showReadingInsightsWindow()
+        end
     else
         -- Fallback: open the built-in stats plugin if weui_stats_windows is unavailable.
         UIManager:broadcastEvent(require("ui/event"):new("ShowReaderProgress"))

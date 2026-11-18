@@ -257,6 +257,9 @@ function Download.run(self, book)
 
                 -- reset download quota cache
                 self:resetDownloadQuotaCache()
+                -- Returning to My Books must fetch the new download rather than
+                -- serving the list cached before it, potentially for a full day.
+                Config.getMultiSearchCache():remove("downloaded")
 
                 -- Completing a book acquisition must not change system
                 -- connectivity. Readers often download several books in a

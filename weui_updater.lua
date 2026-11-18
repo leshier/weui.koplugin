@@ -59,10 +59,8 @@ local _DEFAULT_API_URL = string.format(
     GITHUB_OWNER, GITHUB_REPO
 )
 
--- raw _meta.lua on the default branch. The default check flow reads the
--- version from here instead of hitting api.github.com, whose anonymous
--- rate limit (60 req/h/IP) surfaces as HTTP 403 after just a few checks.
--- raw.githubusercontent.com is not subject to that API rate limit.
+-- Last metadata fallback when an explicitly configured proxy can reach raw
+-- GitHub. Normal checks use the release API and jsDelivr sources below.
 local _RAW_META_URL = string.format(
     "https://raw.githubusercontent.com/%s/%s/main/_meta.lua",
     GITHUB_OWNER, GITHUB_REPO
@@ -979,7 +977,7 @@ end
 function M.scheduleAutoCheck()
     -- Opt-in only: skip silently if the user has not enabled auto-check.
     -- SUISettings:isTrue() returns false for missing keys → disabled by default.
-    local ok_s, SUISettings = pcall(require, "weui_settings")
+    local ok_s, SUISettings = pcall(require, "weui_store")
     if not ok_s or not SUISettings then return end
     if not SUISettings:isTrue("weui_updater_auto_check") then
         logger.dbg("weui updater: auto-check disabled — skipping")

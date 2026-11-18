@@ -749,6 +749,11 @@ end
 -- Assembles the full bottom bar FrameContainer from all tab cells.
 -- In navpager mode, calls getNavpagerState() internally.
 function M.buildBarWidget(active_action_id, tab_config, num_tabs, mode, force_no_arrows)
+    local Paper = package.loaded["weui_paper"]
+    if Paper and (active_action_id == "weread" or active_action_id == "zlibrary")
+        and not Config.tabInTabs(active_action_id, tab_config or Config.loadTabConfig()) then
+        active_action_id = Paper.originTab() or "home"
+    end
     num_tabs    = num_tabs or Config.getNumTabs()
     mode        = mode     or Config.getNavbarMode()
     local screen_w = Screen:getWidth()
@@ -1239,7 +1244,8 @@ end
 function M.onTabTap(plugin, action_id, fm_self)
     -- Action-only tabs: fire their action without changing the active tab.
     -- Delegated entirely to QA.execute — no action-specific knowledge needed here.
-    if _isActionOnly(action_id) then
+    local Paper = require("weui_paper")
+    if _isActionOnly(action_id) and not Paper.isMain(action_id) then
         local UIManager = require("ui/uimanager")
         UIManager:scheduleIn(0, function()
             _QA().execute(action_id, { plugin = plugin, fm = fm_self })
@@ -1431,6 +1437,11 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
     local fm = plugin.ui
     local RUI = package.loaded["apps/reader/readerui"]
     local readerui = RUI and RUI.instance
+    local Paper = require("weui_paper")
+    if not readerui and Paper.isSheet(action_id) then
+        local sheet = Paper.showSheet(action_id)
+        if sheet then return sheet end
+    end
     local is_group_over_reader = readerui and fm_self
         and (fm_self._weui_full_page_group or fm_self._weread_full_page)
 
@@ -1452,7 +1463,9 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
             if action_id == "homescreen" then
                 Patches.closeReaderToHomescreen(plugin, false, true)
             elseif action_id == "home" then
-                Patches.closeReaderToLibrary(plugin)
+                Patches.closeReaderToLibrary(plugin, function(live_fm)
+                    require("weui_paper").navigate(live_fm._weui_plugin or plugin, "home")
+                end)
             else
                 Patches.closeReaderToLibrary(plugin, function(live_fm)
                     local live_plugin = live_fm and live_fm._weui_plugin or plugin
@@ -1480,6 +1493,15 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
 
     -- "force" doubles as the already_active flag passed from onTabTap.
     local already_active = force
+
+    if Paper.isMain(action_id) then
+        if readerui then
+            return require("weui_patches").closeReaderToLibrary(plugin, function(live_fm)
+                Paper.navigate(live_fm._weui_plugin or plugin, action_id)
+            end)
+        end
+        return Paper.navigate(plugin, action_id)
+    end
 
     -- tabs may not be loaded yet when navigate() is called directly (e.g.
     -- from on_qa_tap in the homescreen). Load them now if needed so that

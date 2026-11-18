@@ -296,7 +296,7 @@ msgstr "年度阅读目标"
 
 #: sui_menu.lua:1771 sui_menu.lua:1774
 msgid "Appearance"
-msgstr "外观"
+msgstr "外观与布局"
 
 #: sui_config.lua:853 sui_config.lua:925 sui_menu.lua:1036 sui_menu.lua:1313
 #: sui_menu.lua:2344 sui_menu.lua:2416 sui_menu.lua:2453 sui_menu.lua:2850
@@ -3488,7 +3488,7 @@ msgstr "状态栏 — 文本"
 
 #: sui_settings_window.lua:259
 msgid "Status, title, navigation and pagination"
-msgstr "状态栏、标题栏、导航栏和分页栏"
+msgstr "状态栏、标题栏、导航与分页"
 
 #: sui_stats_windows.lua:3518 desktop_modules/module_reading_stats.lua:94
 msgid "Streak"
@@ -5219,3 +5219,159 @@ msgstr "代理隧道已建立，但连接 Z-Library 的 TLS 握手失败。"
 #: main.lua weui_quickactions.lua
 msgid "Z-Library proxy protection could not be installed. Network access was blocked to prevent a direct connection."
 msgstr "无法安装 Z-Library 代理保护。为避免直连，已阻止网络访问。"
+
+#: weui_config.lua weui_settings_window.lua
+msgid "More"
+msgstr "更多"
+
+#: weui_settings_window.lua
+msgid "Reading"
+msgstr "阅读"
+
+#: weui_settings_window.lua
+msgid "Notes & Highlights"
+msgstr "笔记与划线"
+
+#: desktop_modules/module_dashboard_header.lua
+msgid "Dashboard Header"
+msgstr "仪表盘标题"
+
+#: weui_quickactions.lua
+msgid "WeRead not available."
+msgstr "微信读书不可用。"
+
+#: weui_quickactions.lua
+msgid "File search not available."
+msgstr "文件搜索不可用。"
+
+#: desktop_modules/module_dashboard_header.lua
+msgid "Reading Room"
+msgstr "书房"
+
+#: weui_settings_window.lua
+msgid "Shelf, sync and downloads"
+msgstr "书架、同步与下载"
+
+#: weui_settings_window.lua
+msgid "Search and download"
+msgstr "搜索与下载"
+
+#: weui_settings_window.lua
+msgid "Time, streaks and history"
+msgstr "时长、连续天数与历史"
+
+#: weui_settings_window.lua
+msgid "Daily, weekly and yearly goals"
+msgstr "每日、每周与年度目标"
+
+#: weui_settings_window.lua
+msgid "WeRead notes and popular highlights"
+msgstr "微信读书笔记与热门划线"
+
+#: weui_settings_window.lua
+msgid "Groups and shelves"
+msgstr "分组与书架"
+
+#: weui_settings_window.lua
+msgid "Starred books"
+msgstr "收藏的书籍"
+
+#: weui_settings_window.lua
+msgid "Recently opened books"
+msgstr "最近打开的书"
+
+#: weui_settings_window.lua
+msgid "Search files and book metadata"
+msgstr "搜索文件与书籍信息"
+
+#: weui_settings_window.lua
+msgid "Restart, power off or suspend"
+msgstr "重启、关机或休眠"
+
+#: weui_config.lua
+msgid "Bookshelf"
+msgstr "书架"
+
+#: weui_stats_windows.lua
+msgid "Week"
+msgstr "周"
+
+#: weui_stats_windows.lua
+msgid "Month"
+msgstr "月"
+
+#: weui_stats_windows.lua
+msgid "Year"
+msgstr "年"
+
+#: weui_stats_windows.lua
+msgid "All time"
+msgstr "全部"
+
+#: weui_stats_windows.lua
+msgid "min"
+msgstr "分钟"
+
+#: weui_stats_windows.lua
+msgid "hours"
+msgstr "小时"
+
+#: weui_stats_windows.lua
+msgid "%d min/day  ·  %d-day streak"
+msgstr "日均 %d 分钟 · 连续 %d 天"
+
+#: weui_stats_windows.lua
+msgid "Daily reading"
+msgstr "每日阅读"
+
+#: weui_stats_windows.lua
+msgid "minutes"
+msgstr "分钟"
+
+#: weui_stats_windows.lua
+msgid "best %d"
+msgstr "最佳 %d 天"
+
+#: weui_stats_windows.lua
+msgid "Open full reading insights"
+msgstr "打开完整阅读洞察"
+
+#: weui_stats_windows.lua
+msgid "Recently read"
+msgstr "最近阅读"
+
+#: weui_stats_windows.lua
+msgid "No recent books yet."
+msgstr "暂无阅读记录。"
+
+#: weui_stats_windows.lua
+msgid "No reading yet this week."
+msgstr "本周还没有阅读记录。"
+
+#: weui_stats_windows.lua
+msgid "This week"
+msgstr "本周阅读"
+
+#: weui_weread_shelf.lua
+msgid "Shelf · %d books"
+msgstr "书架 · %d 本"
+
+#: weui_weread_shelf.lua
+msgid "Shelf synced"
+msgstr "书架已同步"
+
+#: weui_weread_shelf.lua
+msgid "%d books · updated just now"
+msgstr "%d 本 · 刚刚更新"
+
+#: weui_weread_shelf.lua
+msgid "Get latest"
+msgstr "获取最新"
+
+#: weui_weread_shelf.lua
+msgid "Public accounts"
+msgstr "公众号"
+
+#: weui_weread_shelf.lua
+msgid "No public-account books."
+msgstr "暂无公众号书籍。"

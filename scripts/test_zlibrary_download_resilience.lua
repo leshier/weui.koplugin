@@ -9,6 +9,7 @@ local link_mode = "ok"
 local trapper_mode = "fork_failure"
 local download_calls = 0
 local wifi_disable_calls = 0
+local personal_lists = { downloaded = { { id = "old" } }, favorites = { { id = "favorite" } } }
 
 local Api = {
     getDownloadTempPath = function(path) return path .. ".downloading" end,
@@ -31,6 +32,9 @@ local Config = {
     getDownloadDir = function() return "/tmp" end,
     getBookUrl = function() return nil end,
     disableRuntimeCacheWrites = function() end,
+    getMultiSearchCache = function()
+        return { remove = function(_, key) personal_lists[key] = nil end }
+    end,
 }
 
 local Trapper = {}
@@ -116,12 +120,16 @@ assert(download_calls == 1, "fork failure should fall back to one in-process dow
 assert(opened_book == "Title - Author.epub")
 assert(captured_error == nil)
 assert(wifi_disable_calls == 0, "Z-Library completion must never disable Wi-Fi")
+assert(personal_lists.downloaded == nil, "completed download must refresh My Books")
+assert(personal_lists.favorites[1].id == "favorite", "download must retain the favorites list")
 
 -- A child that exits without a serialized result gets an actionable error.
 trapper_mode = "empty_result"
 opened_book, captured_error = nil, nil
+personal_lists.downloaded = { { id = "old" } }
 Download.run(plugin, book)
 assert(captured_error == "Download process ended unexpectedly. Please retry.")
+assert(personal_lists.downloaded[1].id == "old", "failed download must retain existing history")
 
 -- Exceptions retain the cause, but signed query parameters are redacted.
 trapper_mode = "throw"

@@ -534,8 +534,17 @@ local function _registerBuiltins()
     local builtins = {
         -- ── Navigation actions ──────────────────────────────────────────────
         {
+            id = "notes",
+            label = _("Notes"),
+            icon = Config.ICON.weread_notes,
+            is_in_place = false,
+            execute = function(ctx)
+                require("weui_paper").navigate(ctx.plugin or _weui_plugin(), "notes")
+            end,
+        },
+        {
             id    = "home",
-            label = _("Library"),
+            label = _("Bookshelf"),
             icon  = Config.ICON.library,
             is_in_place = false,
             execute = function(ctx)
@@ -562,7 +571,7 @@ local function _registerBuiltins()
         },
         {
             id    = "homescreen",
-            label = _("Home"),
+            label = _("Reading Room"),
             icon  = Config.ICON.ko_home,
             is_in_place = false,
             execute = function(ctx)
@@ -594,6 +603,63 @@ local function _registerBuiltins()
                 else
                     local su = ctx.show_unavailable or _unavailToast
                     su(_("Homescreen not available."))
+                end
+            end,
+        },
+        {
+            id    = "weread",
+            label = _("WeRead"),
+            icon  = Config.ICON.weread,
+            is_in_place = false,
+            execute = function(ctx)
+                local plugin = ctx.plugin or _weui_plugin()
+                local su = ctx.show_unavailable or _unavailToast
+                if plugin and type(plugin._navigate) == "function" then
+                    plugin:_navigate("weread", plugin.ui, Config.loadTabConfig(), false)
+                else
+                    su(_("WeRead not available."))
+                end
+            end,
+        },
+        {
+            id    = "file_search",
+            label = _("Search"),
+            icon  = Config.ICON.ko_search,
+            is_in_place = false,
+            execute = function(ctx)
+                local fm = ctx.fm or _liveFM()
+                local su = ctx.show_unavailable or _unavailToast
+                if fm and fm.filesearcher then
+                    fm.filesearcher:onShowFileSearch()
+                else
+                    su(_("File search not available."))
+                end
+            end,
+        },
+        {
+            id    = "reading_goals",
+            label = _("Reading Goals"),
+            icon  = Config.ICON.stats,
+            is_in_place = true,
+            is_async_in_place = true,
+            execute = function(_ctx)
+                local ok, SW = pcall(require, "weui_stats_windows")
+                if ok and SW and SW.showStreakManagerWindow then
+                    SW.showStreakManagerWindow()
+                end
+            end,
+        },
+        {
+            id    = "weread_notes",
+            label = _("Notes & Highlights"),
+            icon  = Config.ICON.weread_notes,
+            is_in_place = true,
+            is_async_in_place = true,
+            execute = function(ctx)
+                local plugin = ctx.plugin or _weui_plugin()
+                local wr = plugin and plugin._weread_plugin
+                if wr and type(wr.showNotesOverview) == "function" then
+                    wr:showNotesOverview()
                 end
             end,
         },
@@ -778,9 +844,13 @@ local function _registerBuiltins()
                 local su = ctx.show_unavailable or _unavailToast
                 local plugin = ctx.plugin or _weui_plugin()
                 local ok, SW = pcall(require, "weui_stats_windows")
-                if ok and SW and SW.showReadingInsightsWindow then
+                if ok and SW and (SW.showOverviewWindow or SW.showReadingInsightsWindow) then
                     QA.trackIndicatorViaCallback(plugin, "stats_calendar", function(restore)
-                        SW.showReadingInsightsWindow(restore)
+                        if SW.showOverviewWindow then
+                            SW.showOverviewWindow(restore)
+                        else
+                            SW.showReadingInsightsWindow(restore)
+                        end
                     end)
                 else
                     local ok2, err = pcall(function()
@@ -857,8 +927,8 @@ local function _registerBuiltins()
         },
         {
             id    = "weui_settings",
-            label = _("Settings"),
-            icon  = Config.ICON.ko_settings,
+            label = _("More"),
+            icon  = Config.ICON.weui_menu,
             is_in_place = true,
             execute = function(ctx)
                 local plugin = ctx.plugin or _weui_plugin()
@@ -1054,6 +1124,12 @@ end
 function QA.execute(id, ctx)
     ctx = ctx or {}
     local su = ctx.show_unavailable or _unavailToast
+    local Paper = package.loaded["weui_paper"]
+    local Reader = package.loaded["apps/reader/readerui"]
+    if Paper and Paper.isSheet(id) and not (Reader and Reader.instance) then
+        local sheet = Paper.showSheet(id)
+        if sheet then return sheet end
+    end
 
     -- Custom QA: delegate to existing executor.
     if id and id:match("^custom_qa_%d+$") then

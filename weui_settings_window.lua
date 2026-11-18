@@ -242,65 +242,168 @@ local function buildScreens(st)
         return makeMenuTable(ctx, items)
     end
 
-    -- ── 2.1. Root ────────────────────────────────────────────────────────────
+    -- ── 2.1. Root — More hub ─────────────────────────────────────────────────
+    -- The old settings-only root hid most plugin features behind a long menu.
+    -- The redesigned root exposes the reading tools first, then the settings
+    -- pages, so every feature has a visible one-tap entry.
     local function buildRoot(ctx)
         local iw = ctx.inner_w
-        return {
-            SUI.ListRow{
-                title        = _("Home Screen"),
-                subtitle     = _("Layout, wallpaper and behaviour"),
-                inner_w      = iw,
-                show_chevron = true,
-                on_tap       = function() ctx.push("home_screen_settings") end,
-            },
-            SUI.ListRow{
-                title        = _("Bars"),
-                subtitle     = _("Status, title, navigation and pagination"),
-                inner_w      = iw,
-                show_chevron = true,
-                on_tap       = function() ctx.push("bars_settings") end,
-            },
-            SUI.ListRow{
-                title        = _("Library"),
-                subtitle     = _("Book-browser settings"),
-                inner_w      = iw,
-                show_chevron = true,
-                on_tap       = function() ctx.push("library_settings") end,
-            },
-            SUI.ListRow{
-                title        = _("Style"),
-                subtitle     = _("Icons, fonts and appearance"),
-                inner_w      = iw,
-                show_chevron = true,
-                on_tap       = function() ctx.push("style_settings") end,
-            },
-            SUI.ListRow{
-                title        = _("Quick Actions"),
-                subtitle     = (function()
-                    local Config = require("weui_config")
-                    local n = #Config.getCustomQAList()
-                    if n == 0 then return _("Global custom quick actions") end
-                    return string.format(_("Global custom quick actions  (%d/%d)"), n, Config.MAX_CUSTOM_QA)
-                end)(),
-                inner_w      = iw,
-                show_chevron = true,
-                on_tap       = function()
-                    local ok, QA = pcall(require, "weui_quickactions")
-                    if ok and QA and QA.weui_show_qa_list then
-                        QA.weui_show_qa_list(getPlugin(), makeCtxMenu(ctx), ctx)
-                    else
-                        ctx.push("quick_actions_settings")
-                    end
-                end,
-            },
-            SUI.ListRow{
-                title        = _("About"),
-                subtitle     = _("Version, author and updates"),
-                inner_w      = iw,
-                show_chevron = true,
-                on_tap       = function() ctx.push("about_settings") end,
-            },
+
+        local function executeQA(action_id)
+            if st.close_window then st.close_window() end
+            UIManager:scheduleIn(0, function()
+                local ok, QA = pcall(require, "weui_quickactions")
+                if ok and QA then
+                    QA.execute(action_id, {
+                        plugin         = getPlugin(),
+                        already_active = false,
+                    })
+                end
+            end)
+        end
+
+        local rows = {}
+        local function section(title)
+            rows[#rows + 1] = SUI.Section{ inner_w = iw, title = title }
+        end
+        local function row(opts)
+            opts.inner_w = iw
+            rows[#rows + 1] = SUI.ListRow(opts)
+        end
+
+        section(_("Reading"))
+        row{
+            title        = _("WeRead"),
+            subtitle     = _("Shelf, sync and downloads"),
+            left_icon    = SUIStyle.icon("book"),
+            show_chevron = true,
+            on_tap       = function() executeQA("weread") end,
         }
+        row{
+            title        = _("Z-Library"),
+            subtitle     = _("Search and download"),
+            left_icon    = SUIStyle.icon("book"),
+            show_chevron = true,
+            on_tap       = function() executeQA("zlibrary") end,
+        }
+        row{
+            title        = _("Reading Stats"),
+            subtitle     = _("Time, streaks and history"),
+            left_icon    = SUIStyle.icon("stats"),
+            show_chevron = true,
+            on_tap       = function() executeQA("stats_calendar") end,
+        }
+        row{
+            title        = _("Reading Goals"),
+            subtitle     = _("Daily, weekly and yearly goals"),
+            left_icon    = SUIStyle.icon("goal"),
+            show_chevron = true,
+            on_tap       = function() executeQA("reading_goals") end,
+        }
+        row{
+            title        = _("Notes & Highlights"),
+            subtitle     = _("WeRead notes and popular highlights"),
+            left_icon    = SUIStyle.icon("notes"),
+            show_chevron = true,
+            on_tap       = function() executeQA("weread_notes") end,
+        }
+
+        section(_("Library"))
+        row{
+            title        = _("Collections"),
+            subtitle     = _("Groups and shelves"),
+            left_icon    = SUIStyle.icon("book"),
+            show_chevron = true,
+            on_tap       = function() executeQA("collections") end,
+        }
+        row{
+            title        = _("Favorites"),
+            subtitle     = _("Starred books"),
+            left_icon    = SUIStyle.icon("goal"),
+            show_chevron = true,
+            on_tap       = function() executeQA("favorites") end,
+        }
+        row{
+            title        = _("History"),
+            subtitle     = _("Recently opened books"),
+            left_icon    = SUIStyle.icon("clock"),
+            show_chevron = true,
+            on_tap       = function() executeQA("history") end,
+        }
+        row{
+            title        = _("Search"),
+            subtitle     = _("Search files and book metadata"),
+            left_icon    = SUIStyle.icon("notes"),
+            show_chevron = true,
+            on_tap       = function() executeQA("file_search") end,
+        }
+
+        section(_("Appearance"))
+        row{
+            title        = _("Home Screen"),
+            subtitle     = _("Layout, wallpaper and behaviour"),
+            left_icon    = SUIStyle.icon("book"),
+            show_chevron = true,
+            on_tap       = function() ctx.push("home_screen_settings") end,
+        }
+        row{
+            title        = _("Bars"),
+            subtitle     = _("Status, title, navigation and pagination"),
+            left_icon    = SUIStyle.icon("book"),
+            show_chevron = true,
+            on_tap       = function() ctx.push("bars_settings") end,
+        }
+        row{
+            title        = _("Library"),
+            subtitle     = _("Book-browser settings"),
+            left_icon    = SUIStyle.icon("book"),
+            show_chevron = true,
+            on_tap       = function() ctx.push("library_settings") end,
+        }
+        row{
+            title        = _("Style"),
+            subtitle     = _("Icons, fonts and appearance"),
+            left_icon    = SUIStyle.icon("notes"),
+            show_chevron = true,
+            on_tap       = function() ctx.push("style_settings") end,
+        }
+        row{
+            title        = _("Quick Actions"),
+            subtitle     = (function()
+                local Config = require("weui_config")
+                local n = #Config.getCustomQAList()
+                if n == 0 then return _("Global custom quick actions") end
+                return string.format(_("Global custom quick actions  (%d/%d)"), n, Config.MAX_CUSTOM_QA)
+            end)(),
+            left_icon    = SUIStyle.icon("add"),
+            show_chevron = true,
+            on_tap       = function()
+                local ok, QA = pcall(require, "weui_quickactions")
+                if ok and QA and QA.weui_show_qa_list then
+                    QA.weui_show_qa_list(getPlugin(), makeCtxMenu(ctx), ctx)
+                else
+                    ctx.push("quick_actions_settings")
+                end
+            end,
+        }
+
+        section(_("System"))
+        row{
+            title        = _("About"),
+            subtitle     = _("Version, author and updates"),
+            left_icon    = SUIStyle.icon("stats"),
+            show_chevron = true,
+            on_tap       = function() ctx.push("about_settings") end,
+        }
+        row{
+            title        = _("Power"),
+            subtitle     = _("Restart, power off or suspend"),
+            left_icon    = SUIStyle.icon("clock"),
+            show_chevron = true,
+            on_tap       = function() executeQA("power") end,
+        }
+
+        return rows
     end
 
     -- ── 2.2. Home Screen ─────────────────────────────────────────────────────
@@ -859,7 +962,7 @@ end
 
 local function makeScreenTitles(st)
     return {
-        __root__               = _("We UI Settings"),
+        __root__               = _("More"),
         home_screen_settings   = _("Home Screen"),
         bars_settings          = _("Bars"),
         library_settings       = _("Library"),
@@ -976,7 +1079,12 @@ function SettingsWindow:show(on_close)
         },
     }
 
+    st.close_window = function()
+        win:close()
+    end
+
     win:show()
+    return win
 end
 
 return SettingsWindow

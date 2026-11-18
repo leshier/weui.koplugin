@@ -201,6 +201,9 @@ local function installBookDetailsAdapter()
     -- budget by that chrome and center the popup in the remaining region.
     local original_budget = class._contentBudget
     local budget_wrapper = function(self, buttons)
+        -- The floating cover's paint offset belongs to the standalone dialog.
+        -- Keep it inside the content slot when WeUI reserves a status bar above.
+        self.pop_out_offset = 0
         local budget = original_budget(self, buttons)
         local UI = require("weui_core")
         local reserved = math.max(0, Screen:getHeight() - UI.getContentHeight())

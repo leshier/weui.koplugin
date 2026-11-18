@@ -580,7 +580,7 @@ function BookDetailsDialog:_buildButtons()
     -- to a dead-end view holding only a "Back" button.
     if self.book.description and self.book.description ~= "" then
         table.insert(dialog_buttons, {{
-            text = "\u{F02D}  " .. T("Profile"), align = "left",
+            text = "\u{F02D}  " .. T("Book description"), align = "left",
             callback = function() self:switchState("description") end
         }})
     end

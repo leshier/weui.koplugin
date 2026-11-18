@@ -17,7 +17,7 @@ local T = require("ffi/util").template
 
 local Annotations = require("lib.annotations")
 local Client = require("lib.client")
-local Content = require("lib.content")
+local Content = require("weread.lib.content")
 local Downloader = require("lib.downloader")
 local EndOfBookDialog = require("ui.end_of_book_dialog")
 local I18n = require("lib.i18n")
@@ -146,6 +146,7 @@ local function back_item(callback)
     return menu_item(Config.ICON.weread_back, _("Back"), {
         callback = callback,
         separator = true,
+        _weread_back = true,
     })
 end
 
@@ -249,48 +250,7 @@ local WeReadPlugin = WidgetContainer:extend{
 }
 
 function WeReadPlugin:init()
-    math.randomseed(os.time())
-    self.settings = Settings:new()
-    self.client = Client:new(self.settings)
-    self.downloader = Downloader:new{
-        client = self.client,
-        settings = self.settings,
-        show_info       = function(text) self:showInfo(text) end,
-        show_transient  = function(text, timeout) self:showTransientInfo(text, timeout) end,
-        refresh_ui      = function() self:refreshUI() end,
-        refresh_shelf   = function() self:refreshShelfCacheIndicators() end,
-        open_file       = function(path) self:openFile(path) end,
-        safe_callback   = function(label, fn) return self:safeCallback(label, fn) end,
-        require_login   = function(cookie, api_key) return self:requireLogin(cookie, api_key) end,
-        run_online_task = function(label, fn) self:runOnlineTask(label, fn) end,
-    }
-    self:migrateLegacyBookData()
-    self.qr_login = QRLogin:new(self, self.client, self.settings)
-    self.read_report = ReadReport:new{
-        settings = self.settings,
-        client = self.client,
-        scheduler = UIManager,
-        get_document = function()
-            return self.ui and self.ui.document
-        end,
-        detect_book = function()
-            return self:detectWeReadBook()
-        end,
-        is_online = function()
-            return self:isNetworkOnline()
-        end,
-    }
-    self:onDispatcherRegisterActions()
-    self.ui.menu:registerToMainMenu(self)
-    local read_report = self.settings:get("read_report")
-    if read_report.enabled
-        and read_report.mode == "manual"
-        and read_report.book_id ~= ""
-        and read_report.report_on_open == false then
-        self.read_report:maybe_start("plugin_start")
-    end
-    ThoughtPopup.init()
-    self._reader_session_gen = 0
+    require("weui_weread_features").init(self)
     logger.info(LOG_MODULE, "initialized:", "version=", self.version)
 end
 
@@ -634,7 +594,33 @@ function WeReadPlugin:showMainMenu()
             end
         end),
     }))
+    table.insert(items, menu_item(Config.ICON.weread_shelf, _("WeRead favorites"), {
+        callback = open_over_page(_("WeRead favorites"), function() self:showWereadCollection() end),
+    }))
+    if self.ui.document then
+        table.insert(items, {
+            text = _("Sync progress now"),
+            enabled_func = function() return self:detectWeReadBook() ~= nil end,
+            callback = open_over_page(_("Sync progress now"), function() self:onWeReadSyncProgress() end),
+        })
+        table.insert(items, {
+            text = _("Underlines and thoughts management"),
+            sub_item_table_func = function() return self:getUnifiedAnnotationMenuItems() end,
+        })
+        table.insert(items, {
+            text = _("Show underlines and thoughts"),
+            checked_func = function() return self.settings:get("cache").show_annotations ~= false end,
+            callback = function() self:toggleAnnotationVisibility() end,
+        })
+    end
+    table.insert(items, {
+        text = _("Settings"),
+        sub_item_table_func = function() return self:getSettingsMenuItems() end,
+    })
 
+    if require("weui_paper").weReadOrigin(self) then
+        return self:showList(_("WeRead"), items)
+    end
     pad_items_to_page(items, MENU_ITEMS_PER_PAGE)
     local menu = Menu:new{
         title = _("WeRead"),
@@ -684,11 +670,15 @@ end
 
 function WeReadPlugin:closeMenuAndShowMain(menu)
     if menu then
-        UIManager:close(menu)
+        self:closeWeReadMenu(menu)
     end
     UIManager:nextTick(function()
         self:showMainMenu()
     end)
+end
+
+function WeReadPlugin:closeWeReadMenu(menu)
+    if menu and not menu._weread_paper_view then UIManager:close(menu) end
 end
 
 function WeReadPlugin:showDownloadTasks()
@@ -710,14 +700,14 @@ function WeReadPlugin:showDownloadTasks()
         menu_item(Config.ICON.weread_download, _("Active downloads"), {
             mandatory = tostring(active_count),
             callback = self:safeCallback(_("Active downloads"), function()
-                if menu then UIManager:close(menu) end
+                self:closeWeReadMenu(menu)
                 self:showDownloadTaskList("active")
             end),
         }),
         menu_item(Config.ICON.weread_check, _("Completed downloads"), {
             mandatory = tostring(finished_count),
             callback = self:safeCallback(_("Completed downloads"), function()
-                if menu then UIManager:close(menu) end
+                self:closeWeReadMenu(menu)
                 self:showDownloadTaskList("done")
             end),
         }),
@@ -749,7 +739,7 @@ function WeReadPlugin:showDownloadTaskList(kind)
                         UIManager:unschedule(menu._download_refresh_handle)
                         menu._download_refresh_handle = nil
                     end
-                    UIManager:close(menu)
+                    self:closeWeReadMenu(menu)
                 end
                 self:showDownloadTasks()
             end),
@@ -791,7 +781,7 @@ function WeReadPlugin:showDownloadTaskList(kind)
     end
 
     local function refreshList()
-        if not _active or not menu then return end
+        if not _active or not menu or menu._closed then return end
         local ok, err = pcall(function()
             menu:switchItemTable(nil, buildItems())
         end)
@@ -803,7 +793,8 @@ function WeReadPlugin:showDownloadTaskList(kind)
         -- doesn't compete with the download steps for UI-thread time
         -- (each download step does synchronous network I/O on the UI thread).
         local interval = 5
-        menu._download_refresh_handle = UIManager:scheduleIn(interval, refreshList)
+        menu._download_refresh_handle = refreshList
+        UIManager:scheduleIn(interval, refreshList)
     end
 
     local title = kind == "done" and _("Completed downloads") or _("Active downloads")
@@ -811,7 +802,8 @@ function WeReadPlugin:showDownloadTaskList(kind)
 
     -- Start auto-refresh loop
     if menu then
-        menu._download_refresh_handle = UIManager:scheduleIn(5, refreshList)
+        menu._download_refresh_handle = refreshList
+        UIManager:scheduleIn(5, refreshList)
         -- Clean up timer when menu is closed
         local orig_close = menu.onClose
         menu.onClose = function()
@@ -825,8 +817,17 @@ function WeReadPlugin:showDownloadTaskList(kind)
     end
 end
 
+function WeReadPlugin:showPaperDownloadTask(task)
+    return require("weui_paper").showWeReadView(self, {
+        kind = "task", title = "下载进度", key = "task:" .. tostring(task.id), task = task,
+        cancel_callback = function() self.downloader:cancelTask(task) end,
+        read_callback = function() self:openFile(task.output_path) end,
+    })
+end
+
 function WeReadPlugin:showDownloadTaskDetail(task)
     if not task then return end
+    if self:showPaperDownloadTask(task) then return end
     local function statusText()
         local status = task.status or ""
         if status == "running" then return _("Downloading") end
@@ -1394,7 +1395,8 @@ function WeReadPlugin:showShelfFilterOptions(on_changed)
                     UIManager:nextTick(function()
                         UIManager:close(dialog)
                         -- Toggle within the dimension: re-tapping clears it, else select.
-                        filters[opt.dim] = (filters[opt.dim] == opt.value) and nil or opt.value
+                        if filters[opt.dim] == opt.value then filters[opt.dim] = nil
+                        else filters[opt.dim] = opt.value end
                         self:saveShelfFilters()
                         on_changed()
                     end)
@@ -1814,12 +1816,20 @@ function WeReadPlugin:showOffline(label)
     self:showInfo(T(_("%1 failed:\n%2"), label, _("No network connection. Please connect Wi-Fi and try again.")))
 end
 
-function WeReadPlugin:runOnlineTask(label, callback, delay)
+function WeReadPlugin:runOnlineTask(label, callback, delay, background)
+    local silent_offline = type(background) == "table" and background.silent_offline
     if not self:isNetworkOnline() then
-        self:showOffline(label)
+        if not silent_offline then self:showOffline(label) end
         return false
     end
+    local Paper = require("weui_paper")
+    local origin = not background and Paper.weReadOrigin(self)
+    local view = origin and origin.view
     UIManager:scheduleIn(delay or 0.1, function()
+        if origin and (origin._closed or Paper._instance ~= origin or origin.view ~= view) then
+            self:closeBusy()
+            return
+        end
         local ok, err = xpcall(callback, debug.traceback)
         if not ok then
             self:closeBusy()
@@ -1842,11 +1852,18 @@ function WeReadPlugin:runNetworkAction(label, action)
     end)
 end
 
-function WeReadPlugin:showList(title, items, empty_text)
+function WeReadPlugin:showList(title, items, empty_text, options)
+    options = options or {}
     if not items or #items == 0 then
         self:showInfo(empty_text or _("No items."))
         return
     end
+    local paper = require("weui_paper").showWeReadView(self, {
+        kind = "list", title = title, items = items, empty_text = empty_text,
+        pinned_action = options.pinned_action, subtitle = options.subtitle,
+        key = options.key,
+    })
+    if paper then return paper end
     pad_items_to_page(items, MENU_ITEMS_PER_PAGE)
     local menu = Menu:new{
         title = title,
@@ -1859,7 +1876,7 @@ function WeReadPlugin:showList(title, items, empty_text)
         is_popout = false,
         title_bar_fm_style = true,
         height = get_menu_height(),
-        items_per_page = MENU_ITEMS_PER_PAGE,
+        items_per_page = options.items_per_page or MENU_ITEMS_PER_PAGE,
         items_font_size = MENU_ITEM_FONT_SIZE,
         items_mandatory_font_size = MENU_MANDATORY_FONT_SIZE,
     }
@@ -1914,7 +1931,7 @@ function WeReadPlugin:showAccountStatus()
     local login_method = account.login_method == "qr" and _("QR login") or _("Unknown")
     local cookie_status = self.settings:is_cookie_configured() and _("configured") or _("missing")
     local api_status = self.settings:is_api_configured() and _("configured") or _("missing")
-    self:showInfo(T(
+    self:showTextDetail(_("Account"), T(
         _("Account: %1\nLogin method: %2\nCookie: %3\nOfficial API key: %4\nCache directory:\n%5"),
         account_name,
         login_method,
@@ -1931,6 +1948,7 @@ function WeReadPlugin:confirmClearAccount()
         ok_callback = self:safeCallback(_("Clear"), function()
             self.qr_login:cancel()
             self.settings:reset_account()
+            self:onWeReadAccountChanged()
             self:refreshLoginMenu()
             self:showInfo(_("WeRead account data cleared."))
         end),
@@ -2095,7 +2113,7 @@ function WeReadPlugin:showReadReportBookPicker()
     self:showBusy(_("Loading bookshelf..."))
     self:runOnlineTask(_("Bookshelf"), function()
         local ok, result = pcall(function()
-            return self.client:gateway("/shelf/sync", {})
+            return self.client:get_shelf()
         end)
         if not ok then
             self:closeBusy()
@@ -2235,7 +2253,8 @@ end
 function WeReadPlugin:showBookshelf()
     if not self:requireLogin(true, true) then
         return
-    end    self:showBusy(_("Loading bookshelf..."))
+    end
+    self:showBusy(_("Loading bookshelf..."))
     self:runOnlineTask(_("Bookshelf"), function()
         local ok, result = pcall(function()
             return self.client:gateway("/shelf/sync", {})
@@ -2247,25 +2266,30 @@ function WeReadPlugin:showBookshelf()
             return
         end
         local all_books = result.books or {}
-        local shelf = self.settings:get("shelf")
-        self.shelf_filters = { reading = shelf.filter_reading, download = shelf.filter_download }
-        self.shelf_regular = {}
-        self.shelf_mp = {}
-        for _i, book in ipairs(all_books) do
-            if WeRead.is_mp_book(book.bookId) then
-                table.insert(self.shelf_mp, book)
-            else
-                table.insert(self.shelf_regular, book)
-            end
-        end
-        self.shelf_books = self.shelf_regular
+        local archives = result.archives or result.archive or {}
+        self.library_db:cacheShelf(all_books, archives)
+        self.settings:set("shelf_cache", { books = all_books, archives = archives, updated_at = os.time(),
+            account_key = self.library_db:accountKey() })
+        self.settings:flush()
+        self:applyShelfSnapshot(all_books, archives)
         self:closeBusy()
-        if #self.shelf_mp > 0 then
-            self:showShelfTabs()
-        else
-            self:showShelfPage()
-        end
+        self:showShelfGrid(1, "books")
     end)
+end
+
+-- The paper source page can show the last successful shelf while offline.
+-- Refresh remains an explicit action so entering a source does not block on I/O.
+function WeReadPlugin:showShelfGrid(page, tab)
+    self:ensurePaperShelf()
+    return require("weui_paper").showWeRead(self, page, tab)
+end
+
+function WeReadPlugin:showLegacyShelfGrid(page, tab)
+    local ok, Shelf = pcall(require, "weui_weread_shelf")
+    if ok and Shelf and type(Shelf.show) == "function" then
+        return Shelf.show(self, page, tab)
+    end
+    self:showShelfPage()
 end
 
 local function sortBooks(books, sort_order)
@@ -2296,7 +2320,48 @@ local function sortBooks(books, sort_order)
     return sorted
 end
 
+function WeReadPlugin:getPaperShelfBooks(tab)
+    return sortBooks((tab == "mp" and self.shelf_mp or self.shelf_regular or self.shelf_books) or {},
+        self.settings:get("shelf").sort_order)
+end
+
+function WeReadPlugin:queuePaperCover(book, page)
+    if not book.cover or book.cover == "" or not self:isNetworkOnline() then return end
+    local id = tostring(book.book_id or book.bookId or ""):gsub("[^%w_.-]", "_")
+    if id == "" then return end
+    self._paper_cover_pending = self._paper_cover_pending or {}
+    self._paper_cover_failed = self._paper_cover_failed or {}
+    if self._paper_cover_pending[id] or self._paper_cover_failed[id] then return end
+    self._paper_cover_pending[id] = true
+    UIManager:scheduleIn(0.05, function()
+        self._paper_cover_pending[id] = nil
+        if page._closed or require("weui_paper")._instance ~= page or not self:isNetworkOnline() then return end
+        local dir = require("datastorage"):getSettingsDir() .. "/weread_covers"
+        local path = dir .. "/" .. id .. ".jpg"
+        if file_exists(path) then return end
+        local ok, data = pcall(self.client.get_binary, self.client, book.cover, { timeout = 5 })
+        if not ok or type(data) ~= "string" or #data == 0 or #data > 2097152 then
+            self._paper_cover_failed[id] = true
+            return
+        end
+        require("libs/libkoreader-lfs").mkdir(dir)
+        local temporary = path .. ".tmp.jpg"
+        local file = io.open(temporary, "wb")
+        if not file then return end
+        local written = file:write(data); file:close()
+        local image
+        local valid = written and pcall(function()
+            image = require("ui/widget/imagewidget"):new{ file = temporary, width = page:px(108), height = page:px(151) }
+            image:_render()
+        end)
+        if image then image:free() end
+        if valid then os.rename(temporary, path) else os.remove(temporary); self._paper_cover_failed[id] = true end
+        if not page._closed then page:rebuild() end
+    end)
+end
+
 function WeReadPlugin:showShelfPage()
+    if require("weui_paper").weReadOrigin(self) then return self:showShelfGrid(1, "books") end
     local books = self.shelf_books or {}
     if #books == 0 then
         self:showInfo(_("Your WeRead shelf is empty."))
@@ -2395,59 +2460,55 @@ function WeReadPlugin:refreshFileManagerIfVisible()
 end
 
 function WeReadPlugin:showBookRecord(book)
-    if not self:requireLogin(true, true) then
-        return
-    end
     local books = self.settings:get("books", {})
     local book_id = book.book_id or book.bookId
+    if not book_id then self:showInfo(_("No book ID.")); return end
     if WeRead.is_mp_book(book_id) then
         self:showMPAccount(book)
         return
     end
-    if book_id then
-        books[book_id] = books[book_id] or {}
-        books[book_id].book_id = book_id
-        books[book_id].title = book.title
-        books[book_id].author = book.author
-        books[book_id].cover = book.cover
-        books[book_id].updated_at = os.time()
-        self.settings:set("books", books)
-        self.settings:flush()
-    end
     local saved = books[book_id] or book
-    self:showBusy(_("Loading book info..."))
+    for _, key in ipairs({ "title", "author", "cover", "progress", "finishReading" }) do
+        if book[key] ~= nil then saved[key] = book[key] end
+    end
+    saved.book_id = book_id
+    self:showBookMenu(saved)
+    -- Cached details and reading remain available without login or Wi-Fi.
+    if not self.settings:is_api_configured() or not self:isNetworkOnline() then return end
     self:runOnlineTask(_("Book info"), function()
-        local ok, err = pcall(function()
-            local info = self.client:get_book_info(book_id)
-            if info then
-                saved.intro = info.intro
-                saved.publisher = info.publisher
-                saved.isbn = info.isbn
-                saved.wordCount = info.wordCount
-                saved.newRating = info.newRating
-                saved.newRatingCount = info.newRatingCount
-                saved.translator = info.translator
-                saved.categoryName = info.categoryName or info.category
-                books[book_id] = saved
-                self.settings:set("books", books)
-                self.settings:flush()
-            end
-            local progress_result = self.client:get_progress(book_id)
-            if progress_result and progress_result.book then
-                saved.progress = progress_result.book.progress or 0
-            end
-        end)
-        self:closeBusy()
+        local ok, info = pcall(self.client.get_book_info, self.client, book_id)
         if not ok then
-            logger.err(LOG_MODULE, "load book info failed:", log_error(err))
-            self:showInfo(T(_("%1 failed:\n%2"), _("Book info"), display_error(err)))
+            logger.warn(LOG_MODULE, "load book info failed:", log_error(info))
+            self:showTransientInfo(_("Could not refresh book info. Showing cached details."), 3)
             return
         end
-        self:showBookMenu(saved)
+        for _, key in ipairs({ "intro", "publisher", "isbn", "wordCount", "newRating",
+            "newRatingCount", "translator", "title", "author", "cover" }) do
+            if info and info[key] ~= nil then saved[key] = info[key] end
+        end
+        saved.categoryName = info and (info.categoryName or info.category) or saved.categoryName
+        local progress_ok, progress = pcall(self.client.get_progress, self.client, book_id)
+        if progress_ok and progress and progress.book then saved.progress = progress.book.progress or 0 end
+        saved.updated_at = os.time()
+        books[book_id] = saved
+        self.settings:set("books", books); self.settings:flush()
+        local page = require("weui_paper").weReadOrigin(self)
+        if page and page.view and page.view.kind == "detail" and page.view.book == saved then
+            page:rebuild()
+        end
     end)
 end
 
 function WeReadPlugin:showBookMenu(book)
+    if type(book.chapters) ~= "table" then Content.load_catalog_cache(self.client, self.settings, book) end
+    local page = require("weui_paper").showWeReadView(self, {
+        kind = "detail", title = "书籍详情", key = "detail:" .. tostring(book.book_id or book.bookId), book = book,
+    })
+    if page then return page end
+    return self:showBookActions(book)
+end
+
+function WeReadPlugin:showBookActions(book)
     local book_id = book.book_id or book.bookId
     if type(book.chapters) ~= "table" then
         Content.load_catalog_cache(self.client, self.settings, book)
@@ -2462,7 +2523,7 @@ function WeReadPlugin:showBookMenu(book)
     buildItems = function()
         local items = {
             back_item(function()
-                if menu then UIManager:close(menu) end
+                self:closeWeReadMenu(menu)
                 self:showShelfPage()
             end),
         }
@@ -2546,7 +2607,7 @@ function WeReadPlugin:showBookMenu(book)
         if book.intro and book.intro ~= "" then
             table.insert(items, menu_item(Config.ICON.weread_notes, _("Introduction"), {
                 callback = function()
-                    UIManager:show(InfoMessage:new{ text = book.intro })
+                    self:showTextDetail(_("Introduction"), book.intro)
                 end,
             }))
         end
@@ -2571,10 +2632,14 @@ function WeReadPlugin:showBookMenu(book)
         return items
     end
 
-    menu = self:showList(book.title or _("Book details"), buildItems(), _("No actions."))
+    menu = self:showList(T(_("Book details · %1"), book.title or book_id), buildItems(), _("No actions."))
 end
 
 function WeReadPlugin:showTextDetail(title, text)
+    local page = require("weui_paper").showWeReadView(self, {
+        kind = "text", title = title, key = "text:" .. title .. ":" .. tostring(text), text = text,
+    })
+    if page then return page end
     UIManager:show(InfoMessage:new{
         text = text,
         height = math.floor(Screen:getHeight() * 0.72),
@@ -2599,7 +2664,7 @@ function WeReadPlugin:showNotesOverview()
         local menu
         local items = {
             back_item(function()
-                if menu then UIManager:close(menu) end
+                self:closeWeReadMenu(menu)
                 self:showMainMenu()
             end),
         }
@@ -2658,7 +2723,7 @@ function WeReadPlugin:showBookNotes(book)
         local menu
         local items = {
             back_item(function()
-                if menu then UIManager:close(menu) end
+                self:closeWeReadMenu(menu)
                 self:showBookMenu(book)
             end),
         }
@@ -2730,7 +2795,7 @@ function WeReadPlugin:showPopularHighlights(book)
         local menu
         local items = {
             back_item(function()
-                if menu then UIManager:close(menu) end
+                self:closeWeReadMenu(menu)
                 self:showBookMenu(book)
             end),
         }
@@ -2780,7 +2845,7 @@ function WeReadPlugin:showPublicReviews(book, review_type)
         local menu
         local items = {
             back_item(function()
-                if menu then UIManager:close(menu) end
+                self:closeWeReadMenu(menu)
                 self:showBookMenu(book)
             end),
         }
@@ -2835,7 +2900,7 @@ function WeReadPlugin:showRecommendations()
             return
         end
         self:showBookRecommendationList(_("Recommendations"), result.books or {}, function(menu)
-            if menu then UIManager:close(menu) end
+            self:closeWeReadMenu(menu)
             self:showMainMenu()
         end)
     end)
@@ -2863,7 +2928,7 @@ function WeReadPlugin:showSimilarBooks(book)
             books[#books + 1] = info
         end
         self:showBookRecommendationList(T(_("Similar books · %1"), book.title or book_id), books, function(menu)
-            if menu then UIManager:close(menu) end
+            self:closeWeReadMenu(menu)
             self:showBookMenu(book)
         end)
     end)
@@ -2878,7 +2943,8 @@ function WeReadPlugin:showBookRecommendationList(title, books, back_callback)
     }
     local book_icon = get_book_icon_state()
     for _i, book in ipairs(books or {}) do
-        local rating = rating_text(book.newRating)
+        local score = tonumber(book.newRating) or 0
+        local rating = score > 0 and string.format("%.1f%%", score / 10) or ""
         local reason = book.reason or book.category or ""
         table.insert(items, {
             text = book.title or book.bookId or _("Untitled"),
@@ -2909,7 +2975,7 @@ function WeReadPlugin:showShelfTabs()
             text = _("Books"),
             post_text = T(_("%1 books"), tostring(#self.shelf_regular)),
             callback = self:safeCallback(_("Books"), function()
-                if menu then UIManager:close(menu) end
+                self:closeWeReadMenu(menu)
                 self.shelf_books = self.shelf_regular
                 self:showShelfPage()
             end),
@@ -2918,7 +2984,7 @@ function WeReadPlugin:showShelfTabs()
             text = _("Public Accounts"),
             post_text = T(_("%1 accounts"), tostring(#self.shelf_mp)),
             callback = self:safeCallback(_("Public Accounts"), function()
-                if menu then UIManager:close(menu) end
+                self:closeWeReadMenu(menu)
                 self:showMPShelfPage()
             end),
         },
@@ -3143,6 +3209,11 @@ function WeReadPlugin:showChapterList(book)
                 end, true)
             end),
         }}
+        items[#items + 1] = { text = "选择章节下载", callback = function()
+            self:showChapterDownloadSelection(book, chapters, function()
+                if menu then menu:switchItemTable(nil, buildItems(chapters)) end
+            end)
+        end }
         for _i, chapter in ipairs(chapters) do
             local cached = book.cached_chapters and book.cached_chapters[tostring(chapter.chapterUid)]
             table.insert(items, {
@@ -3173,13 +3244,18 @@ function WeReadPlugin:openFile(path)
 end
 
 function WeReadPlugin:openCachedBook(book)
+    if not file_exists(book.cached_file) then
+        local saved = self.settings:get("books", {})[book.book_id or book.bookId]
+        book.cached_file = saved and saved.cached_file
+    end
+    if not file_exists(book.cached_file) then self:showInfo(_("No cached file.")); return end
     self:openFile(book.cached_file)
 end
 
 -- Open a chapter, preferring its cached file and falling back to a download.
 function WeReadPlugin:openChapter(book, chapter)
     local cached = book.cached_chapters and book.cached_chapters[tostring(chapter.chapterUid)]
-    if cached then
+    if file_exists(cached) then
         self:openFile(cached)
     else
         self:downloadChapterAndRead(book, chapter)
@@ -3201,22 +3277,23 @@ function WeReadPlugin:confirmDownloadAllChapters(book)
     end)
 end
 
--- Show the annotation cost warning consistently for every download entry.
--- With annotations disabled, single/partial downloads start immediately;
--- callers with their own confirmation text (the full-book action) keep only
--- that normal confirmation and do not show the annotation warning.
+-- Annotations are fetched and matched independently in the reader. Download
+-- confirmations describe only the EPUB being downloaded.
 function WeReadPlugin:confirmAndDownloadChapters(book, chapters, suffix, options)
     options = options or {}
-    local includes_annotations = self.settings:get("cache").download_underlines_and_thoughts == true
     local text = options.confirmation_text
-    if includes_annotations then
-        local warning = _("This download includes underlines and thoughts and may take significantly longer.")
-        text = text and (text .. "\n\n" .. warning) or warning
-    end
     if not text then
         self.downloader:start(book, chapters, suffix, options)
         return
     end
+
+    local page = require("weui_paper").showWeReadView(self, {
+        kind = "confirm", title = _("Download"), text = text, ok_text = _("Download"),
+        callback = self:safeCallback(_("Download"), function()
+            self.downloader:start(book, chapters, suffix, options)
+        end),
+    })
+    if page then return end
 
     local confirm
     confirm = ConfirmBox:new{
@@ -3310,7 +3387,7 @@ function WeReadPlugin:searchWithUI(keyword)
         local function buildItems()
             local items = {
                 back_item(function()
-                    if menu then UIManager:close(menu) end
+                    self:closeWeReadMenu(menu)
                     self:closeMenuAndShowMain(menu)
                 end),
             }
@@ -4519,4 +4596,5 @@ function WeReadPlugin:onFlushSettings()
     end
 end
 
+require("weui_weread_features").attach(WeReadPlugin)
 return WeReadPlugin

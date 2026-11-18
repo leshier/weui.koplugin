@@ -108,6 +108,17 @@ M.ICON = {
     ko_wifi_on     = _KO .. "wifi.open.100.svg",
     ko_wifi_off    = _KO .. "wifi.open.0.svg",
     weui_menu      = _P .. "weui_menu.svg",
+    weui_close     = _P .. "weui_close.svg",
+    weui_chevron_down = _P .. "weui_chevron_down.svg",
+    weui_sources   = _P .. "weui_sources.svg",
+    weui_goal      = _P .. "weui_goal.svg",
+    weui_layout    = _P .. "weui_layout.svg",
+    weui_privacy   = _P .. "weui_privacy.svg",
+    weui_proxy     = _P .. "weui_proxy.svg",
+    weui_lockscreen = _P .. "weui_lockscreen.svg",
+    weui_update    = _P .. "weui_update.svg",
+    weui_import    = _P .. "weui_import.svg",
+    weui_export    = _P .. "weui_export.svg",
     ko_settings    = _KO .. "appbar.settings.svg",
     ko_search      = _KO .. "appbar.search.svg",
     ko_bookmark    = _KO .. "bookmark.svg",
@@ -122,14 +133,14 @@ M.CUSTOM_GROUP_ICON      = M.ICON.group
 -- 2. Core Constants & Action Registry
 -- ===========================================================================
 
-M.DEFAULT_NUM_TABS       = 6
+M.DEFAULT_NUM_TABS       = 5
 M.MAX_TABS               = 6
 M.MAX_TABS_NAVPAGER      = 4
 M.MAX_LABEL_LEN          = 20
 M.MAX_CUSTOM_QA          = 24
 M.NAVPAGER_CENTER_TABS   = 4
 
-M.DEFAULT_TABS = { "home", "weui_settings", "homescreen", "weread", "history", "power" }
+M.DEFAULT_TABS = { "homescreen", "home", "notes", "stats_calendar", "weui_settings" }
 
 M.NON_HOME_DEFAULTS = {}
 for _i, id in ipairs(M.DEFAULT_TABS) do
@@ -138,8 +149,9 @@ end
 
 -- Action catalogue.
 M.ALL_ACTIONS = {
-    { id = "home",             label = _("Library"),          icon = M.ICON.library     },
-    { id = "homescreen",       label = _("Home"),             icon = M.ICON.ko_home     },
+    { id = "home",             label = _("Bookshelf"),        icon = M.ICON.library     },
+    { id = "homescreen",       label = _("Reading Room"),     icon = M.ICON.ko_home     },
+    { id = "notes",            label = _("Notes"),            icon = M.ICON.weread_notes },
     { id = "collections",      label = _("Collections"),      icon = M.ICON.collections },
     { id = "history",          label = _("History"),          icon = M.ICON.history     },
     { id = "recent",           label = _("Recent"),           icon = M.ICON.recent      },
@@ -154,7 +166,7 @@ M.ALL_ACTIONS = {
     { id = "weread",           label = _("WeRead"),           icon = M.ICON.weread      },
     { id = "zlibrary",         label = _("Z-Library"),        icon = M.ICON.zlibrary    },
     { id = "power",            label = _("Power"),            icon = M.ICON.power       },
-    { id = "weui_settings",     label = _("Settings"),         icon = M.ICON.ko_settings },
+    { id = "weui_settings",     label = _("More"),             icon = M.ICON.weui_menu },
     { id = "browse_authors",   label = _("Authors"),          icon = M.ICON.author,
       browsemeta_mode = "author" },
     { id = "browse_series",    label = _("Series"),           icon = M.ICON.series,
@@ -392,7 +404,7 @@ function M.setWifiHideWhenOff(v)
 end
 
 function M.homeLabel()
-    return _("Library")
+    return _("Bookshelf")
 end
 
 function M.homeIcon()
@@ -1403,7 +1415,7 @@ function M.applyFirstRunDefaults()
     def("weui_bar_enabled",  true)
     def("weui_topbar_enabled", true)
     def("weui_bar_mode",     "both")
-    def("weui_bar_tabs",     { "home", "weui_settings", "homescreen", "weread", "history", "power" })
+    def("weui_bar_tabs",     M.DEFAULT_TABS)
     if SUISettings:get("weui_topbar_config") == nil then
         M.saveTopbarConfig({ side = { clock = "left", battery = "right", wifi = "right" }, order_left = { "clock" }, order_right = { "wifi", "battery" } })
     end

@@ -6,6 +6,8 @@
 *~
 .luarc*
 .editorconfig
+__pycache__/
+*.pyc
 
 # Runtime artifact produced by the OTA updater when it downloads a new zip
 # into the plugin directory (see weui_updater.lua _tmpZipPath).
@@ -17,3 +19,9 @@ zlibrary_credentials.lua
 # Locally assembled release archives. GitHub Actions builds release assets
 # from the tagged source tree, so binary packages never belong in commits.
 dist/
+stage/
+
+# Local design previews, screenshots and share bundles.
+design/
+.screenshots/
+.trae-html-share-packages/

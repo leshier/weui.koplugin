@@ -3505,6 +3505,11 @@ end
 -- ---------------------------------------------------------------------------
 
 function Homescreen.show(on_qa_tap, on_goal_tap)
+    if SUISettings:get("weui_paper_home") ~= false then
+        local FM = package.loaded["apps/filemanager/filemanager"]
+        local plugin = FM and FM.instance and FM.instance._weui_plugin
+        if plugin then return require("weui_paper").navigate(plugin, "homescreen") end
+    end
     local onboarding_pending = not SUISettings:get("weui_onboarding_done")
 
     if Homescreen._instance then
@@ -3781,6 +3786,11 @@ end
 --- Must be called after applying a preset that might change the wallpaper,
 --- the transparent bars, or any other option that affects the layout.
 function Homescreen.rebuildLayout()
+    local Paper = package.loaded["weui_paper"]
+    if Paper and Paper._instance then
+        Paper._instance:rebuild(true)
+        return
+    end
     _styleFreeBgCache()
     _rebuildHomescreenLayout()
 end

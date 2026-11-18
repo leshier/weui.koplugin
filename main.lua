@@ -201,6 +201,10 @@ function WeUIPlugin:_initWeReadModule()
             execute = function(ctx)
                 local plugin = (ctx and ctx.plugin) or self
                 local wr = plugin and plugin._weread_plugin or self._weread_plugin
+                if wr and type(wr.showShelfGrid) == "function" then
+                    wr:showShelfGrid(1, "books")
+                    return
+                end
                 if wr and type(wr.showMainMenu) == "function" then
                     wr:showMainMenu()
                     return
@@ -1101,6 +1105,9 @@ function WeUIPlugin:init()
             pcall(function()
                 local tabs = SUISettings:get("weui_bar_tabs")
                 if type(tabs) == "table" then
+                    for _, id in ipairs(tabs) do if id == "notes" then return end end
+                end
+                if type(tabs) == "table" then
                     local found = false
                     local new_tabs = {}
                     for _, id in ipairs(tabs) do
@@ -1220,6 +1227,7 @@ function WeUIPlugin:init()
             SUISettings:set("weui_settings_migrated_v10_restore_classic_ui", true)
             SUISettings:flush()
         end
+        require("weui_migrations").paper(SUISettings, Config)
         Config.migrateOldCustomSlots()
         -- Always run sanitizeQASlots: it cleans both custom QA slot references
         -- and any stale built-in IDs from navbar_tabs.  The function is cheap —
@@ -1680,15 +1688,20 @@ end
 -- package.loaded on teardown so that a hot plugin update (replacing files
 -- without restarting KOReader) always loads fresh code.
 -- ---------------------------------------------------------------------------
-local _PLUGIN_MODULES = {
+local PLUGIN_MODULES = {
     "weui_i18n", "weui_config", "weui_core", "weui_bottombar", "weui_topbar",
-    "weui_patches", "weui_menu", "weui_titlebar", "weui_quickactions",
+    "weui_patches", "weui_sdl_input", "weui_menu", "weui_titlebar", "weui_quickactions",
     "weui_homescreen", "weui_foldercovers", "weui_browsemeta", "weui_updater",
-    "weui_store", "weui_presets", "weui_style", "weui_privacy",
+    "weui_store", "weui_migrations", "weui_presets", "weui_style", "weui_privacy",
     "weui_zlibrary_proxy", "weui_zlibrary_ui",
+    "weui_paper", "weui_paper_sheets", "weui_paper_files", "weui_paper_groups",
+    "weui_paper_weread", "weui_library",
+    "weui_paper_tools", "weui_paper_lockscreen", "weui_lockscreen",
+    "weui_stats_windows", "weui_streak", "weui_onboarding", "weui_window",
     "weui_settings_window",
     "weui_quicksettings_bar",
     "desktop_modules/moduleregistry",
+    "desktop_modules/module_dashboard_header",
     "desktop_modules/module_books_shared",
     "desktop_modules/module_clock",
     "desktop_modules/module_collections",
@@ -1705,6 +1718,7 @@ local _PLUGIN_MODULES = {
     "desktop_modules/quotes",
     "desktop_modules/user_script_loader",
     "lib/sandbox",
+    "lib/downloader",
 }
 
 -- ---------------------------------------------------------------------------
@@ -1729,14 +1743,14 @@ function WeUIPlugin:onWeUIGoHomescreen()
 end
 
 -- Called when the user triggers the "Go to Library" gesture.
--- When inside the Reader: closes the reader and returns to the Library
--- (home_dir) without showing the Homescreen, as if "return to book folder"
--- were disabled — the FM file browser becomes the top widget.
+-- When inside the Reader: closes the reader and returns to the paper shelf.
 -- When outside the Reader: equivalent to tapping the Library tab.
 function WeUIPlugin:onWeUIGoLibrary()
     local RUI = package.loaded["apps/reader/readerui"]
     if RUI and RUI.instance then
-        Patches.closeReaderToLibrary(self)
+        Patches.closeReaderToLibrary(self, function(fm)
+            require("weui_paper").navigate(fm._weui_plugin or self, "home")
+        end)
         return true
     end
     local tabs = Config.loadTabConfig()
@@ -1795,6 +1809,16 @@ end
 
 function WeUIPlugin:onTeardown()
     self._weui_tearing_down = true
+    local weread = self._weread_plugin
+    if weread then
+        weread.read_report:stop("plugin_teardown")
+        weread:_cancelUnifiedAnnotationSync()
+        weread.downloader:shutdown()
+        weread.prefetch_worker:shutdown()
+        weread:_teardownThoughtInterception()
+        weread:_teardownXPointerOverlayPrototype()
+        require("weread.ui.thought_popup").cleanup()
+    end
     -- Flush the plugin settings store so any in-memory writes are persisted
     -- before the plugin is unloaded or KOReader exits.
     SUISettings:flush()
@@ -1970,9 +1994,17 @@ function WeUIPlugin:onTeardown()
         end
         RS._weui_sync_patched = nil
     end
-    for _, mod in ipairs(_PLUGIN_MODULES) do
+    for _, mod in ipairs(PLUGIN_MODULES) do
         package.loaded[mod] = nil
     end
+    local weread_modules = {}
+    for mod in pairs(package.loaded) do
+        if type(mod) == "string" and (mod:match("^weread[./]") or mod:match("^weui_weread")
+                or mod:match("^lib[./]weread_")) then
+            weread_modules[#weread_modules + 1] = mod
+        end
+    end
+    for _, mod in ipairs(weread_modules) do package.loaded[mod] = nil end
 end
 
 -- ---------------------------------------------------------------------------
@@ -2131,12 +2163,15 @@ function WeUIPlugin:onResume()
         end
         -- Re-open the Homescreen on wakeup when \"Start with Homescreen\" is set.
         if SUISettings:nilOrTrue("weui_enabled") then
-            Patches.showHSAfterResume(self)
+            Patches.showHSAfterResume(self, SUISettings:isTrue("weui_hs_return_on_wakeup"))
         end
     end
 end
 
 function WeUIPlugin:onReaderReady()
+    -- ReaderReady precedes the deferred file-manager initialization. Reader
+    -- services must join this session before its first page/progress events.
+    if not self._weread_plugin then self:_initWeReadModule() end
     if self._weread_plugin and type(self._weread_plugin.onReaderReady) == "function" then
         pcall(function() self._weread_plugin:onReaderReady() end)
     end
@@ -2172,6 +2207,8 @@ function WeUIPlugin:onReaderReady()
 end
 
 function WeUIPlugin:onCloseDocument()
+    local Library = package.loaded["weui_library"]
+    if Library then Library.invalidate() end
     if self._weread_plugin and type(self._weread_plugin.onCloseDocument) == "function" then
         pcall(function() self._weread_plugin:onCloseDocument() end)
     end
@@ -2670,6 +2707,8 @@ end
 -- homescreen refresh so the corrected metadata appears immediately.
 -- ---------------------------------------------------------------------------
 function WeUIPlugin:onBookMetadataChanged(_prop_updated)
+    local Library = package.loaded["weui_library"]
+    if Library then Library.invalidate() end
     if self._weui_suspended then return end
 
     local HS = package.loaded["weui_homescreen"]
@@ -2803,7 +2842,22 @@ function WeUIPlugin:onWeReadSyncProgress()
     end
 end
 
+-- Reader events and Dispatcher gestures reach the integrated service just as
+-- they would a standalone KOReader plugin.
+for _, name in ipairs({
+    "onPageUpdate", "onPosUpdate", "onUpdatePos", "onDocumentRerendered",
+    "onToggleWeReadAnnotations", "onWeReadContinueAnnotationMatching",
+    "onShowWeReadQuickMenu", "onShowWeReadBookshelf", "onShowWeReadLocalBookshelf",
+    "onShowWeReadReadingStatistics", "onShowWeReadSearch", "onShowWeReadReportStatus",
+}) do
+    WeUIPlugin[name] = function(self, ...)
+        local weread = self._weread_plugin
+        if weread and type(weread[name]) == "function" then return weread[name](weread, ...) end
+    end
+end
+
 function WeUIPlugin:onReadSettings()
+    if not self._weread_plugin and self.ui and self.ui.document then self:_initWeReadModule() end
     if self._weread_plugin and type(self._weread_plugin.onReadSettings) == "function" then
         return self._weread_plugin:onReadSettings()
     end

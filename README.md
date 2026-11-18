@@ -1,7 +1,47 @@
 # We UI (`weui.koplugin`)
 
-A We UI for KOReader with integrated WeRead (微信读书) and Z-Library book
-sources without changing the classic WeUI home and library layout.
+A paper-style interface for KOReader, optimized for e-ink, with integrated
+WeRead (微信读书) and Z-Library book sources.
+
+## What's new in v1.5.0
+
+- Five main pages: reading room, bookshelf, notes, statistics and more.
+  Book titles, authors, reading percentages and progress bars share one layout;
+  bookshelf filter underlines follow the center of their text.
+- Create and manage local groups through **Bookshelf → Book groups** (书籍分组).
+  Long-press a book and choose **Set book groups** (设置书籍分组) to add or
+  remove it. Groups use KOReader collections; deleting a group keeps its files.
+- WeRead 1.7.0 reader services, resumable chapter downloads, optional prefetch,
+  external annotations and progress synchronization.
+- Custom sleep screens and a combined WeUI/KOReader update page.
+- Direct migration from stock layouts preserves custom home layouts and
+  personal display settings. Release packages contain runtime files and
+  third-party licenses, with development previews and test fixtures excluded.
+
+## WeRead reader features
+
+WeRead uses the reader services from `finlater/weread.koplugin` 1.7.0;
+the pinned source and license attribution are in [weread/UPSTREAM.md](weread/UPSTREAM.md).
+The paper bookshelf supports online groups, reading/download filters, cover
+and list layouts, offline snapshots and continuous list browsing. Book details
+offer single, selected and full-book downloads. Full downloads retain verified
+chapter checkpoints after cancellation and resume when requested again.
+
+Open **WeRead → Settings → Download settings → Chapter prefetch** to enable
+next-chapter downloads. Annotation prefetch is a separate opt-in and requires
+both switches. It downloads reusable source data in a background process;
+matching positions in the current EPUB remains an explicit reader action.
+
+In a reflowable book, use **Underlines and thoughts management** to choose
+chapters, correct chapter mappings, resume matching or bind a local book through
+WeRead search. External annotations use separate SQLite/XPointer projections;
+the original EPUB and KOReader's own annotations remain independent. Thought
+popup position, dimensions, font and edge-tap handling are configurable.
+PDF/DjVu annotation matching is not supported by the upstream implementation.
+
+Progress synchronization maps the current file and chapter into WeRead's
+chapter UID, offset and overall percentage. Automatic pulls, uploads and
+reading reports are disabled by default; enable them in settings when wanted.
 
 ## Installation
 
@@ -65,7 +105,8 @@ inside the same fail-closed proxy transport.
 
 #### Z-Library-only proxy
 
-Open `We UI → Z-Library Proxy` to route every Z-Library request through an
+Open **More → Z-Library proxy** in the paper interface (or
+`We UI → Z-Library Proxy` in the native menu) to route every Z-Library request through an
 independent proxy. This covers sign-in, search, covers, book downloads, mirror
 discovery, and favorites.
 
@@ -83,6 +124,21 @@ discovery, and favorites.
 On Kindle, `127.0.0.1` refers to the Kindle itself. For Clash or another proxy
 running on a computer, phone, or router, use that device's LAN IP and enable LAN
 access. Using an IP address also avoids a local DNS lookup for the proxy host.
+
+#### Paper sleep screens and updates
+
+**More → Custom sleep screen** offers recent reading, seven-day reading
+statistics, and a minimal monthly calendar, with a full-screen preview.
+Snapshots use local data, hide private book titles and covers even while the
+in-app privacy session is unlocked, and do not run refresh timers or network
+requests while sleeping. KOReader keeps control of suspend/resume, gesture
+unlock, delayed dismissal, and e-ink refreshes. Choose **Follow KOReader
+settings** to return to its existing sleep-screen configuration.
+
+**More → System updates** checks WeUI and, on supported devices, KOReader.
+It also exposes KOReader's update channel/server and WeUI's update URL/proxy
+settings. Unsupported devices display an explanation. Update checks lead to
+the existing release information and installation confirmation.
 
 ### From source
 
@@ -141,4 +197,6 @@ belong to their respective owners.
 - The embedded Z-Library source remains under AGPL-3.0; see
   [`LICENSE.zlibrary`](LICENSE.zlibrary).
 - `fonts/NotoEmoji-Regular.ttf` is licensed under the SIL Open Font License
-  1.1 — see [`fonts/LICENSE`](fonts/LICENSE).
+  1.1 — see [`fonts/NotoEmoji-OFL.txt`](fonts/NotoEmoji-OFL.txt).
+- `fonts/PaperSong.ttf` is licensed under the SIL Open Font License
+  1.1 — see [`fonts/PaperSong-OFL.txt`](fonts/PaperSong-OFL.txt).

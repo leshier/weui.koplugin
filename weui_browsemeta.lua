@@ -1183,7 +1183,7 @@ local function _installPatches()
             if _isVirtual(path) then
                 local collate = fc:getCollate()
                 local dirs, fls = _getVirtualList(fc, path, collate)
-                return fc:genItemTable(dirs, fls, path)
+                return fc:genItemTable(dirs, fls, path), true
             end
             return orig(fc, path)
         end

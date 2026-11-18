@@ -12,6 +12,7 @@ local InfoMessage  = require("ui/widget/infomessage")
 local InputDialog  = require("ui/widget/inputdialog")
 local ButtonDialog = require("ui/widget/buttondialog")
 local UIManager    = require("ui/uimanager")
+local logger       = require("logger")
 local _            = require("weui_i18n").translate
 
 local SUISettings = require("weui_store")
@@ -32,11 +33,12 @@ local unpack_args = unpack or table.unpack
 local _real_show_reader = nil
 local _title_cache = {}
 
--- Forward declaration: _scheduleRelock / markUnlocked / lockNow (defined
+-- Forward declaration: scheduleRelock / markUnlocked / lockNow (defined
 -- below) call invalidateBookCaches, which is itself defined further down.
 -- Without this forward declaration those callers would resolve to a nil
 -- global at runtime (Lua binds the reference lexically at definition time).
 local invalidateBookCaches
+local scheduleRelock
 
 -- Set briefly by the history onMenuSelect patch while it re-dispatches an open
 -- after the user just unlocked, so the showReader patch doesn't re-prompt.
@@ -122,13 +124,15 @@ end
 local function setAutoLockMinutes(minutes)
     minutes = math.max(0, math.floor(tonumber(minutes) or 0))
     SUISettings:set(KEY_AUTOLOCK, minutes)
+    if _unlocked_at then _unlocked_at = minutes > 0 and os.time() or nil end
     -- Reset the session timer when the setting changes.
-    _scheduleRelock()
+    scheduleRelock()
+    if minutes == 0 then invalidateBookCaches() end
 end
 
 -- Schedule (or reschedule) the auto-relock timer.
 -- If autolock is disabled or we're not unlocked, clears the timer.
-function _scheduleRelock()
+scheduleRelock = function()
     if _relock_timer then
         pcall(function()
             local UIM = require("ui/uimanager")
@@ -139,12 +143,13 @@ function _scheduleRelock()
     local minutes = getAutoLockMinutes()
     if minutes <= 0 or not _unlocked_at then return end
     local UIM = require("ui/uimanager")
-    _relock_timer = UIM:scheduleIn(minutes * 60, function()
+    _relock_timer = function()
         _unlocked_at = nil
         _relock_timer = nil
         invalidateBookCaches()
         logger.dbg("weui: privacy: auto-relocked after", minutes, "minutes")
-    end)
+    end
+    UIM:scheduleIn(minutes * 60, _relock_timer)
 end
 
 -- Returns true if the user is currently in an unlocked session.
@@ -169,13 +174,16 @@ end
 -- private covers then. lockNow() still refreshes on the reverse transition.
 local function markUnlocked()
     _unlocked_at = os.time()
-    _scheduleRelock()
+    scheduleRelock()
+    -- Drop data snapshots without raising a page during the open-book flow.
+    local Library = package.loaded["weui_library"]
+    if Library then Library.invalidate() end
 end
 
 -- Immediately re-lock: clears session state and refreshes caches.
 local function lockNow()
     _unlocked_at = nil
-    _scheduleRelock()
+    scheduleRelock()
     invalidateBookCaches()
 end
 
@@ -432,6 +440,8 @@ local function showBookDetailsAndConfirm(path, on_confirm, on_cancel)
 end
 
 function invalidateBookCaches(path)
+    local Library = package.loaded["weui_library"]
+    if Library then Library.invalidate() end
     _title_cache[norm(path)] = nil
     pcall(function() SUISettings:del("weui_stale_books_v1") end)
     local SH = package.loaded["desktop_modules/module_books_shared"]
@@ -463,6 +473,19 @@ function invalidateBookCaches(path)
                 pcall(function() HS._instance:_refresh(false) end)
             end
         end
+    end
+    local Paper = package.loaded["weui_paper"]
+    local page = Paper and Paper._instance
+    if page and (not HS or page ~= HS._instance) then
+        pcall(function() page:rebuild(true) end)
+    end
+    if not isUnlocked() then
+        local closing = {}
+        for _, entry in ipairs(UIManager._window_stack or {}) do
+            local widget = entry.widget
+            if widget and widget._weui_private_book then closing[#closing + 1] = widget end
+        end
+        for _, widget in ipairs(closing) do UIManager:close(widget) end
     end
     local ok_fm, FM = pcall(require, "apps/filemanager/filemanager")
     if ok_fm and FM and FM.instance and FM.instance.file_chooser then
@@ -622,8 +645,8 @@ local function promptSetPassword(on_done)
                     end
                     SUISettings:set(KEY_PASSWORD, password)
                     UIManager:close(dialog)
-                    showInfo(_("Private-book password set."))
-                    if on_done then on_done() end
+                    if on_done then on_done()
+                    else showInfo(_("Private-book password set.")) end
                 end,
             },
         }},
@@ -1074,6 +1097,7 @@ function M.patchBookInfoManager()
                 masked.cover_bb = pcbb:copy()
                 masked.cover_w = _PC_W
                 masked.cover_h = _PC_H
+                masked.cover_sizetag = _PC_W .. "x" .. _PC_H
                 masked.has_cover = true
                 masked.ignore_cover = false
                 masked.cover_fetched = "Y"

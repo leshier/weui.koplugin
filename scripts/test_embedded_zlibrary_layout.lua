@@ -37,8 +37,11 @@ assert(main:find('plugins_dir .. "/zlibrary.koplugin"', 1, true), "legacy migrat
 local workflow = read(".github/workflows/release.yml")
 assert(not workflow:find("ZLIBRARY_TAG", 1, true), "release must not build a second plugin")
 assert(not workflow:find("weui%-with%-zlibrary"), "release must expose one asset")
-assert(workflow:find("zip %-rq weui%.koplugin%.zip weui%.koplugin"))
-assert(workflow:find("%-%-exclude='zlibrary_credentials%.lua'"), "credentials must not be packaged")
+assert(workflow:find("scripts/package_release.sh", 1, true), "release must use the tested packager")
+local packager = read("scripts/package_release.sh")
+assert(packager:find("zip %-rq weui%.koplugin%.zip weui%.koplugin"))
+assert(packager:find("%-%-exclude='zlibrary_credentials%.lua'"), "credentials must not be packaged")
+assert(packager:find("--exclude='/weread/spec/'", 1, true), "service specs must not be packaged")
 
 package.path = root .. "/?.lua;" .. package.path
 package.loaded.logger = { warn = function() end }
