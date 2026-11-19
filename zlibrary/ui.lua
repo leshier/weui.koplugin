@@ -183,6 +183,7 @@ function Ui.showDownloadDirectoryDialog()
         onConfirm = function(path)
             if path then
                 Config.saveSetting(Config.SETTINGS_DOWNLOAD_DIR_KEY, path)
+                Config.saveSetting(Config.SETTINGS_FOLLOW_LIBRARY_KEY, false)
                 Ui.showInfoMessage(string.format(T("Download directory set to: %s"), path))
             else
                 Ui.showErrorMessage(T("No directory selected."))

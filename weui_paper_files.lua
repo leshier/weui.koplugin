@@ -10,7 +10,7 @@ local Library = require("weui_library")
 local lfs = require("libs/libkoreader-lfs")
 local ffiUtil = require("ffi/util")
 local M = {}
-local sub, rule = BB.gray(0.66), BB.gray(0.28)
+local sub, rule = BB.gray(0.72), BB.gray(0.42)
 
 function M.extend(Page, Paper)
     local Picker = Page:extend{ _weui_paper_files = true }
@@ -68,6 +68,16 @@ function M.extend(Page, Paper)
         end
     end
 
+    function Picker:confirmHomeDirectory()
+        local ok, message = require("weui_directories").setMain(self.path, self.plugin)
+        if ok then Paper.navigate(self.plugin, "home") end
+        UIManager:show(require("ui/widget/infomessage"):new{
+            text = ok and ("书架主目录已设置为：\n" .. message
+                .. "\nZ-Library 和微信读书的新下载默认保存到这里。") or message,
+            timeout = 4,
+        })
+    end
+
     function Picker:rebuild()
         self:freeItems()
         self.scale = math.min(Screen:getWidth() / 536, Screen:getHeight() / 724)
@@ -77,14 +87,18 @@ function M.extend(Page, Paper)
         self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
         self.items, self.hits, self.entries = {}, {}, {}
         self:text(os.date("%H:%M"), 28, 10, 150, 11)
-        local back = #self.path_history > 0 and "‹ 返回上个目录" or "‹ 返回书籍来源"
+        local directory_mode = self.mode == "home_directory"
+        local back = #self.path_history > 0 and "‹ 返回上个目录" or directory_mode and "‹ 返回书架" or "‹ 返回书籍来源"
         if self.mode == "read" and #self.path_history == 0 then back = "‹ 返回更多" end
         self:text(back, 28, 44, 280, 11, { color = sub })
         self:hit(28, 30, 280, 42, function() self:back() end)
         self:text("取消", 438, 44, 70, 11, { align = "right", color = sub })
         self:hit(432, 30, 76, 42, function() self:dismiss() end)
-        self:text(self.mode == "read" and "下载目录" or "本地导入", 28, 92, 480, 33, { font = "song" })
-        self:text(self.mode == "read" and "点击书籍开始阅读" or "点击文件，将它添加到书架", 28, 140, 480, 11, { color = sub })
+        self:text(directory_mode and "书架主目录" or self.mode == "read" and "下载目录" or "本地导入",
+            28, 92, 480, 33, { font = "song" })
+        self:text(directory_mode and "Z-Library 和微信读书下载默认保存到这里"
+            or self.mode == "read" and "点击书籍开始阅读" or "点击文件，将它添加到书架",
+            28, 140, 480, 11, { color = sub })
         self:text(self.path, 28, 184, 396, 11, { color = sub })
         local parent = self.path:match("^(.*)/[^/]+$") or "/"
         if parent == "" then parent = "/" end
@@ -96,7 +110,7 @@ function M.extend(Page, Paper)
                 if name:sub(1, 1) ~= "." and name:sub(-4) ~= ".sdr" then
                     local path = self.path .. (self.path == "/" and "" or "/") .. name
                     local mode = lfs.attributes(path, "mode")
-                    if mode == "directory" or mode == "file" and Registry:hasProvider(path) then
+                    if mode == "directory" or not directory_mode and mode == "file" and Registry:hasProvider(path) then
                         self.entries[#self.entries + 1] = { label = name, path = path, directory = mode == "directory" }
                     end
                 end
@@ -107,11 +121,13 @@ function M.extend(Page, Paper)
             if a.directory ~= b.directory then return a.directory end
             return a.label < b.label
         end)
-        local per_page = math.max(1, math.floor((self.body_bottom - 40 - 236) / 58))
-        self:pager(#self.entries, per_page)
+        local footer = directory_mode and 92 or 40
+        local per_page = math.max(1, math.floor((self.body_bottom - footer - 236) / 58))
+        self:pager(#self.entries, per_page, self.body_bottom - footer)
         if #self.entries == 0 then
-            self:empty(ok and "这个目录还没有书籍" or "无法读取这个目录",
-                "可返回上一级目录，或取消后重新选择。", 288)
+            self:empty(ok and (directory_mode and "没有子文件夹" or "这个目录还没有书籍") or "无法读取这个目录",
+                directory_mode and "可设为主目录，也可返回上一级重新选择。"
+                    or "可返回上一级目录，或取消后重新选择。", 288)
         end
         local first = (self.state.page - 1) * per_page + 1
         for i = 1, per_page do
@@ -125,6 +141,10 @@ function M.extend(Page, Paper)
                 self:line(y + 56)
                 self:hit(28, y, 480, 58, function() self:choose(entry) end)
             end
+        end
+        if directory_mode then
+            self:button("设为书架主目录", 28, self.body_bottom - 48, 480,
+                function() self:confirmHomeDirectory() end, true)
         end
         self:navbar()
         UIManager:setDirty(self, "ui")

@@ -6,7 +6,7 @@ local UIManager = require("ui/uimanager")
 local Refresh = require("weui_refresh")
 local Config = require("weui_config")
 local lfs = require("libs/libkoreader-lfs")
-local ink, sub, rule = BB.gray(0.91), BB.gray(0.66), BB.gray(0.28)
+local ink, sub, rule = BB.COLOR_BLACK, BB.gray(0.72), BB.gray(0.42)
 local M = {}
 
 local function clean(text)

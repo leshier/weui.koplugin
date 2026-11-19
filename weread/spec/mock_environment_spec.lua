@@ -73,6 +73,9 @@ assert(mock.settings_file == "/settings/weread-mock.lua" and mock.collection_nam
 assert(mock:get("api_key") == "mock-api-key" and mock:get("account").login_method == "mock")
 assert(next(mock:get("books")) == nil and mock:get("shelf").view_mode == "list")
 assert(mock:set_download_dir("/real/downloads") == "/data/weread-mock/cache")
+G_reader_settings = { readSetting = function() return "/library" end }
+assert(mock:get_download_dir() == "/data/weread-mock/cache", "library preference escaped mock isolation")
+G_reader_settings = nil
 mock:set("shelf", { view_mode = "mock-only" })
 config.host, config.port, config.enabled = "192.168.31.112", 8766, false
 assert(Environment.save(config))

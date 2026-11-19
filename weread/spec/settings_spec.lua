@@ -211,4 +211,18 @@ expect(not ok and values.device_fingerprint == "invalid; cookie=value",
     "failed entropy reads must not save a partial or shared fallback fingerprint")
 setfenv(Settings.get_device_fingerprint, original_environment)
 
+local library_root = "/library"
+G_reader_settings = { readSetting = function(_, key) if key == "home_dir" then return library_root end end }
+settings:set_download_dir("")
+expect(settings:get_download_dir() == "/library", "default downloads should follow the library")
+expect(Settings:new().cache_dir == "/library", "library default should survive reopening")
+settings:set_download_dir("/custom")
+library_root = "/other-library"
+expect(settings:get_download_dir() == "/custom", "explicit download override should be retained")
+settings:set_download_dir(library_root, true)
+library_root = "/new-library"
+expect(settings:get_download_dir() == "/new-library", "linked directory stopped following the library")
+expect(Settings:new().cache_dir == "/new-library", "linked directory did not persist")
+G_reader_settings = nil
+
 print(("settings_spec: %d checks"):format(checks))

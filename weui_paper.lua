@@ -19,9 +19,11 @@ local Privacy = require("weui_privacy")
 local _ = require("weui_i18n").translate
 local M = {}
 local dir = debug.getinfo(1, "S").source:match("^@(.+/)[^/]+$")
-local song = dir .. "fonts/PaperSong.ttf"
+local songFace = require("weui_fonts").bundledFace(dir .. "fonts/PaperSong.ttf", "NotoSansCJKsc-Regular.otf")
 -- Blitbuffer.gray uses darkness: 0 is white, 1 is black.
-local ink, sub, rule = BB.gray(0.91), BB.gray(0.66), BB.gray(0.28)
+local ink, sub, rule = BB.COLOR_BLACK, BB.gray(0.72), BB.gray(0.42)
+local readable_sizes = { [8] = 12, [9] = 12, [10] = 12, [11] = 14, [12] = 15,
+    [13] = 16, [14] = 17, [15] = 18, [17] = 19, [18] = 20, [19] = 21 }
 local ids = { "homescreen", "home", "notes", "stats_calendar", "weui_settings" }
 local labels = {
     homescreen = _("Reading Room"), home = _("Bookshelf"), notes = _("Notes"),
@@ -88,16 +90,20 @@ end
 function Page:px(n) return math.floor(n * self.scale + 0.5) end
 function Page:face(kind, size)
     -- Font:getFace applies DPI scaling. Convert the desired physical size once.
+    size = readable_sizes[size] or size
     local logical = self:px(size) * 100 / Screen:scaleBySize(100)
-    return Font:getFace(kind == "song" and song or kind == "number" and "NotoSerif-Regular.ttf"
-        or "NotoSansCJKsc-Regular.otf", logical)
+    if kind == "info" then return Font:getFace("NotoSansCJKsc-Regular.otf", logical) end
+    if kind == "number" then return Font:getFace("NotoSerif-Regular.ttf", logical) end
+    return songFace(logical)
 end
 function Page:text(text, x, y, w, size, opts)
     opts = opts or {}
     local widget
     local properties = {
-        text = tostring(text or ""), face = self:face(opts.font, size or 12),
-        fgcolor = opts.color or ink, bgcolor = opts.background or BB.COLOR_WHITE,
+        text = tostring(text or ""),
+        face = self:face(opts.font or (opts.color and opts.color == sub and "info" or "song"), size or 12),
+        fgcolor = opts.color or ink,
+        bgcolor = opts.background or BB.COLOR_WHITE,
         bold = opts.bold, padding = 0,
     }
     if opts.h then
@@ -132,7 +138,7 @@ function Page:icon(path, x, y, size)
     self.items[#self.items + 1] = { widget = widget, x = self:px(x), y = self:px(y) }
 end
 function Page:iconButton(path, x, y, callback, label)
-    self:icon(path, x + 13, y + 13, 22)
+    self:icon(path, x + 11, y + 11, 26)
     self:hit(x, y, 48, 48, callback, label and function() toast(label) end)
 end
 function Page:button(label, x, y, w, callback, solid)
@@ -204,7 +210,7 @@ function Page:cover(book, x, y, w, h, allow_source_cover)
         return
     end
     local filepath = book.filepath or book.source_book and book.source_book.cached_file
-    local cover = filepath and SH.getBookCover(filepath, self:px(w), self:px(h))
+    local cover = filepath and SH.getBookCover(filepath, self:px(w), self:px(h), "fit")
     if not cover and filepath and not book.private and not Config.isCoverMissing(filepath) then
         self._pending_cover_files = self._pending_cover_files or {}
         self._pending_cover_files[filepath] = true
@@ -249,12 +255,12 @@ function Page:bookReadingInfo(book, x, y, w, opts)
     if author ~= "" then
         -- Reserve the complete reading status, then fit the author into what
         -- remains. A single text run keeps all metadata on one baseline.
-        local suffix = TextWidget:new{ text = " · " .. status, face = self:face(nil, size), padding = 0 }
+        local suffix = TextWidget:new{ text = " · " .. status, face = self:face("info", size), padding = 0 }
         local suffix_w = suffix:getSize().w
         suffix:free()
         local author_w = self:px(w) - suffix_w
         if author_w > self:px(size) then
-            local fitted = TextWidget:new{ text = author, face = self:face(nil, size),
+            local fitted = TextWidget:new{ text = author, face = self:face("info", size),
                 max_width = author_w, truncate_with_ellipsis = true, padding = 0 }
             local text, ellipsis = fitted:getFittedText()
             author = text .. (ellipsis and "…" or "")
@@ -269,11 +275,11 @@ function Page:bookCell(book, x, y, w, cover_w, cover_h, compact)
     self:cover(book, cover_x, y, cover_w, cover_h)
     if book.cached then
         local badge_x = cover_x + 3
-        self:rect(badge_x, y + cover_h - 19, 39, 16, BB.COLOR_WHITE)
-        self:text("已缓存", badge_x + 3, y + cover_h - 17, 33, 8)
+        self:rect(badge_x, y + cover_h - 24, 46, 22, BB.COLOR_WHITE)
+        self:text("已缓存", badge_x + 3, y + cover_h - 22, 40, 8)
     end
     local title_y = y + cover_h + 7
-    local title_h = compact and 17 or 30
+    local title_h = compact and 24 or 44
     self:text(book.title, cover_x, title_y, cover_w, 13,
         { font = "song", h = title_h, line_height = 0.15 })
     local info_y = title_y + title_h + 4
@@ -284,13 +290,26 @@ function Page:bookCell(book, x, y, w, cover_w, cover_h, compact)
         function() self:bookDetails(book) end)
 end
 function Page:bookRow(book, x, y, w, h)
-    self:cover(book, x, y, 42, math.min(59, h - 8))
-    local text_x, text_w = x + 58, w - 58
-    self:text(book.title, text_x, y + 1, text_w, 15, { font = "song" })
-    self:bookReadingInfo(book, text_x, y + 25, text_w, { cached = book.cached })
-    self:readingProgress(book, text_x, y + 45, text_w)
-    self:rect(x, y + h - 3, w, 0.7, rule)
-    self:hit(x, y, w, h, function() self:openBook(book) end, function() self:bookDetails(book) end)
+    local cover_h = math.min(self.wr and 144 or 112, h - 16)
+    local cover_w = math.floor(cover_h / 1.4)
+    self:cover(book, x, y + 6, cover_w, cover_h)
+    local text_x, text_w = x + cover_w + 18, w - cover_w - 18
+    local title = self:text(book.title, text_x, y + 5, text_w, 17,
+        { font = "song", h = h - 63, line_height = 0.1, height_adjust = true })
+    local author_y = y + 5 + title:getSize().h / self.scale + 4
+    local author = self:text(book.authors and book.authors ~= "" and book.authors or "作者未提供",
+        text_x, author_y, text_w, 11, { color = sub, font = "info" })
+    local status = book.status == "done" and "已读完" or book.percent > 0 and "已读 " .. SH.pctStr(book.percent) or "未读"
+    if book.last_page then status = status .. " · 第 " .. book.last_page .. " 页" end
+    if book.cached then status = status .. " · 已缓存" end
+    self:text(status, text_x, author_y + author:getSize().h / self.scale + 4, text_w, 11)
+    self:readingProgress(book, text_x, y + h - 9, text_w, 3)
+    self:rect(x, y + h - 1, w, 0.7, rule)
+    self:hit(x, y, w, h - 2, function() self:openBook(book) end, function() self:bookDetails(book) end)
+    self.hits[#self.hits].book = book
+    self.book_rows = self.book_rows or {}
+    self.book_rows[#self.book_rows + 1] = { book = book, title = title, author = author,
+        x = x, y = y, h = h, cover_w = cover_w, cover_h = cover_h }
 end
 function Page:bookDetails(book)
     if self.wr then return self.wr:showBookRecord(book.source_book) end
@@ -300,6 +319,7 @@ function Page:bookDetails(book)
     end)
     dialog = require("ui/widget/buttondialog"):new{
         title = book.title .. "\n" .. book.authors .. "\n" .. self:bookStatus(book),
+        title_face = self:face("song", 21),
         buttons = {
             { { text = "开始阅读", callback = function() UIManager:close(dialog); self:openBook(book) end } },
             { { text = book.favorite and "取消收藏" or "加入收藏", callback = function()
@@ -367,10 +387,10 @@ function Page:openBook(book)
     if self.wr then self.wr:showBookRecord(book.source_book); return end
     Privacy.openBook(book.filepath)
 end
-function Page:pager(total, per_page)
+function Page:pager(total, per_page, y)
     self.pages = math.max(1, math.ceil(total / per_page))
     self.state.page = math.max(1, math.min(self.state.page, self.pages))
-    local y = self.body_bottom - 40
+    y = y or self.body_bottom - 40
     self:line(y, rule)
     self:text("‹", 174, y + 4, 48, 25, { align = "center", color = self.state.page > 1 and ink or rule })
     self:text(self.state.page .. " / " .. self.pages, 238, y + 14, 60, 11, { align = "center", color = sub })
@@ -395,7 +415,9 @@ function Page:library()
     self:filters({ { "all", "全部", 98 }, { "reading", "在读", 98 }, { "unread", "未读", 98 },
         { "done", "读完", 98 }, { "favorites", "收藏", 88 } }, 170, counts)
     local result = Library.filter(books, self.state.query, self.state.filter, self.state.sort)
-    self:pager(#result, 6)
+    self.book_rows = {}
+    local per_page = math.max(1, math.floor((self.body_bottom - 40 - 221) / 120))
+    self:pager(#result, per_page)
     if #result == 0 then
         self:empty(Library.isScanning() and "正在整理书架" or "这里还没有书",
             Library.isScanning() and "书籍会自动显示，可以先切换到其他页面。"
@@ -403,19 +425,11 @@ function Page:library()
             function() self.state.query, self.state.filter = "", "all"; self:rebuild() end)
         return
     end
-    local list = self.state.layout == "list"
-    local row_h = (self.body_bottom - 40 - 221) / (list and 6 or 2)
-    for i = 1, 6 do
-        local book = result[(self.state.page - 1) * 6 + i]
+    local row_h = (self.body_bottom - 40 - 221) / per_page
+    for i = 1, per_page do
+        local book = result[(self.state.page - 1) * per_page + i]
         if book then
-            if list then
-                local y = 221 + (i - 1) * row_h
-                self:bookRow(book, 28, y, 480, row_h)
-            else
-                local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
-                -- Two native title lines also include the font's descenders.
-                self:bookCell(book, 28 + col * 168, 221 + row * row_h, 144, 90, math.min(126, row_h - 80))
-            end
+            self:bookRow(book, 28, 221 + (i - 1) * row_h, 480, row_h)
         end
     end
 end
@@ -425,9 +439,11 @@ function Page:libraryOptions()
         UIManager:close(dialog); self.state[key], self.state.page = value, 1; self:rebuild()
     end
     dialog = require("ui/widget/buttondialog"):new{ title = "书架整理", buttons = {
+        { { text = "设置书架主目录", callback = function()
+            UIManager:close(dialog)
+            M.showFilePicker(self, "home_directory", require("weui_directories").main())
+        end } },
         { { text = "书籍分组", callback = function() UIManager:close(dialog); M.showGroups(self) end } },
-        { { text = self.state.layout == "list" and "封面视图" or "列表视图",
-            callback = function() change("layout", self.state.layout == "list" and "grid" or "list") end } },
         { { text = "按最近阅读", callback = function() change("sort", "recent") end },
           { text = "按书名", callback = function() change("sort", "title") end } },
         { { text = "按阅读进度", callback = function() change("sort", "progress") end } },
@@ -451,7 +467,7 @@ function Page:home()
     if book then
         self:cover(book, 28, 150, 114, 160)
         local title = self:text(book.title, 164, 148, 344, 24,
-            { font = "song", h = 60, height_adjust = true, line_height = 0.15 })
+            { font = "song", h = 68, height_adjust = true, line_height = 0.15 })
         local info_y = 148 + title:getSize().h / self.scale + 9
         local info = self:bookReadingInfo(book, 164, info_y, 344, { size = 12,
             status = book.status == "done" and "已读完" or "已读 " .. SH.pctStr(book.percent) })
@@ -487,7 +503,7 @@ function Page:home()
         local b = recent[i + 1]
         if b then
             local x = 28 + (i - 1) * 168
-            self:bookCell(b, x, 455, 144, 74, 92, true)
+            self:bookCell(b, x, 455, 144, 78, 78, true)
         end
     end
     if #recent < 2 then self:text("开始阅读后，这里会显示最近的书籍。", 28, 489, 480, 12, { color = sub }) end
@@ -779,7 +795,7 @@ function Page:weread()
         end
     end
     local list_mode = self.wr.settings:get("shelf").view_mode == "list"
-    local perpage = list_mode and math.max(1, math.floor((self.body_bottom - 319) / 64)) or 6
+    local perpage = math.max(1, math.floor((self.body_bottom - 40 - 279) / (list_mode and 104 or 150)))
     local first
     if list_mode and self.wr.settings:get("shelf").paginated == false then
         -- Virtual rows keep memory and refresh work bounded on e-ink devices.
@@ -809,22 +825,12 @@ function Page:weread()
             self.state.query ~= "" and "修改书名或作者，再试一次。" or "点击右上方刷新图标，连接账号并同步书架。", 357)
         return
     end
-    local row_h = (self.body_bottom - 40 - 279) / 2
-    if list_mode then
-        for i = 1, perpage do
-            local b = books[first + i - 1]
-            if b then
-                local y = 279 + (i - 1) * 64
-                self:bookRow(b, 28, y, 480, 64)
-            end
-        end
-        return
-    end
-    for i = 1, 6 do
-        local b = books[(self.state.page - 1) * 6 + i]
+    self.book_rows = {}
+    local row_h = (self.body_bottom - 40 - 279) / perpage
+    for i = 1, perpage do
+        local b = books[first + i - 1]
         if b then
-            self:bookCell(b, 28 + ((i - 1) % 3) * 168, 279 + math.floor((i - 1) / 3) * row_h,
-                144, 80, math.min(112, row_h - 62), true)
+            self:bookRow(b, 28, 279 + (i - 1) * row_h, 480, row_h)
         end
     end
 end
@@ -851,8 +857,8 @@ function Page:navbar()
         local action = Config.getActionById(id)
         local x = 24 + (i - 1) * w
         if id == self.tab then self:rect(x + (w - 30) / 2, y - 1, 30, 3, ink) end
-        self:icon(action.icon, x + (w - 21) / 2, y + 13, 21)
-        self:text(action.label, x, y + 42, w, 11, { align = "center", color = id == self.tab and ink or sub, bold = id == self.tab })
+        self:icon(action.icon, x + (w - 25) / 2, y + 10, 25)
+        self:text(action.label, x, y + 39, w, 11, { align = "center" })
         self:hit(x, y, w, 66, function()
             if M.isMain(id) then M.navigate(self.plugin, id) else self:action(id) end
         end)
@@ -1060,7 +1066,7 @@ function Page:onClose()
 end
 function Page:freeItems()
     for _, item in ipairs(self.items or {}) do if item.widget then item.widget:free() end end
-    self.items = {}
+    self.items, self.book_rows = {}, nil
 end
 function Page:onCloseWidget()
     self._closed = true

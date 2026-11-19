@@ -103,7 +103,7 @@ M.ICON = {
     tags           = _P .. "tags.svg",
     nav_prev       = _KO .. "chevron.left.svg",
     nav_next       = _KO .. "chevron.right.svg",
-    ko_home        = _KO .. "home.svg",
+    ko_home        = _P .. "weui_home.svg",
     ko_star        = _KO .. "star.empty.svg",
     ko_wifi_on     = _KO .. "wifi.open.100.svg",
     ko_wifi_off    = _KO .. "wifi.open.0.svg",
@@ -120,7 +120,7 @@ M.ICON = {
     weui_import    = _P .. "weui_import.svg",
     weui_export    = _P .. "weui_export.svg",
     ko_settings    = _KO .. "appbar.settings.svg",
-    ko_search      = _KO .. "appbar.search.svg",
+    ko_search      = _P .. "weui_search.svg",
     ko_bookmark    = _KO .. "bookmark.svg",
 }
 
@@ -1082,7 +1082,7 @@ local function _scaleBBToSlot(bb, target_w, target_h, align, stretch_limit)
         end
         return bb, false
     end
-    if stretch_limit then
+    if stretch_limit and align ~= "fit" then
         local scale_w, scale_h = target_w / src_w, target_h / src_h
         local distort = math.abs(scale_w / scale_h - 1)
         if distort <= stretch_limit then
@@ -1090,13 +1090,21 @@ local function _scaleBBToSlot(bb, target_w, target_h, align, stretch_limit)
             if ok_sc and stretched_bb then return stretched_bb, true end
         end
     end
-    local scale_factor = math_max(target_w / src_w, target_h / src_h)
+    local scale_factor = align == "fit" and math_min(target_w / src_w, target_h / src_h)
+        or math_max(target_w / src_w, target_h / src_h)
     local scaled_w, scaled_h = math_floor(src_w * scale_factor + 0.5), math_floor(src_h * scale_factor + 0.5)
     local ok_sc, scaled_bb = pcall(_RenderImage.scaleBlitBuffer, _RenderImage, bb, scaled_w, scaled_h)
     if not (ok_sc and scaled_bb) then return bb, false end
     if scaled_w == target_w and scaled_h == target_h then return scaled_bb, true end
     local ok_slot, slot_bb = pcall(Blitbuffer.new, target_w, target_h, scaled_bb:getType())
     if not (ok_slot and slot_bb) then return scaled_bb, true end
+    if align == "fit" then
+        slot_bb:fill(Blitbuffer.COLOR_WHITE)
+        slot_bb:blitFrom(scaled_bb, math_floor((target_w - scaled_w) / 2),
+            math_floor((target_h - scaled_h) / 2), 0, 0, scaled_w, scaled_h)
+        scaled_bb:free()
+        return slot_bb, true
+    end
     local src_x = align == "left" and 0 or (align == "right" and scaled_w - target_w or math_floor((scaled_w - target_w) / 2))
     local src_y = math_floor((scaled_h - target_h) / 2)
     pcall(slot_bb.blitFrom, slot_bb, scaled_bb, 0, 0, src_x, src_y, target_w, target_h)

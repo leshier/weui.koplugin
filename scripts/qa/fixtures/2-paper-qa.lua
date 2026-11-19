@@ -126,6 +126,26 @@ add("01-home", function()
     assert(unreadable == false, "failed directory read was reported as readable")
     assert(not chooser.unreadable_path_warned, "readable library produced a directory warning")
     local page = Paper.navigate(plugin, "homescreen")
+    local title_face = page:face("song", 33)
+    assert(title_face.realname:find("PaperSong.ttf", 1, true), "paper title did not use the bundled serif")
+    local has_primary, has_secondary = false, false
+    for _, item in ipairs(page.items) do
+        local widget = item.widget
+        if widget and widget.text then
+            assert(widget.face.size >= page:px(12), "paper text is too small")
+            if widget.text == "书房" then
+                assert(not widget.bold and widget.fgcolor:getColor8().a == 0, "serif heading is not black/regular")
+                has_primary = true
+            elseif widget.text:find("星期", 1, true) then
+                assert(widget.face.realname == "NotoSansCJKsc-Regular.otf" and not widget.bold,
+                    "supporting label did not use regular info font")
+                assert(widget.fgcolor:getColor8().a > 0 and widget.fgcolor:getColor8().a <= 85,
+                    "supporting label is too pale")
+                has_secondary = true
+            end
+        end
+    end
+    assert(has_primary and has_secondary, "type hierarchy missing")
     assert(require("weui_config").getActionById("homescreen").label == "书房", "default room label")
     assert(#page.books == 8, "fixture book discovery")
     local stats = Data.stats("week", nil, page.books)
@@ -138,13 +158,109 @@ end)
 add("02-library", function()
     tap(Paper._instance, 170, Paper._instance.logical_h - 24)
     local page = Paper._instance
-    assert(page.screen == "home" and page.pages == 2, "library navigation or pagination")
+    assert(page.screen == "home" and page.pages == 3 and #page.book_rows == 3, "detailed shelf pagination")
+    for _, row in ipairs(page.book_rows) do
+        assert(row.title:getSize().w > page:px(350), "book title column is cramped")
+        assert(row.cover_h >= 100 and row.cover_w >= 70, "book cover is too small")
+    end
     geometry(page)
+end)
+add("02a-library-main-directory-cancel", function()
+    local page = Paper._instance
+    page:libraryOptions()
+    buttonByText(topWidget(), "设置书架主目录").callback()
+    local picker = topWidget()
+    assert(picker.mode == "home_directory" and picker.path == require("ffi/util").realpath(booksdir), "main directory picker")
+    for _, entry in ipairs(picker.entries) do assert(entry.directory, "directory picker includes a file") end
+    geometry(picker)
+    picker:dismiss()
+    assert(G_reader_settings:readSetting("home_dir") == booksdir, "cancel changed the library root")
+end)
+add("02b-library-main-directory-save", function()
+    local page = Paper._instance
+    Paper.showFilePicker(page, "home_directory", root .. "/data")
+    local picker = topWidget()
+    tapLabel(picker, "设为书架主目录")
+    local chosen = require("ffi/util").realpath(root .. "/data")
+    assert(G_reader_settings:readSetting("home_dir") == chosen, "library root did not persist")
+    local ZConfig = require("zlibrary.config")
+    assert(ZConfig.getDownloadDir() == chosen, "Z-Library download root did not follow shelf")
+    assert(plugin._weread_plugin.settings:get_download_dir() == chosen, "WeRead live download root did not follow shelf")
+    local saved = require("luasettings"):open(require("datastorage"):getSettingsDir() .. "/weread.lua")
+    assert(saved:readSetting("download_dir") == chosen and saved:readSetting("download_dir_follow_library") == true,
+        "WeRead root did not persist")
+    UIManager:close(topWidget())
+    assert(require("weui_directories").setMain(booksdir, plugin))
+    Paper.navigate(plugin, "home")
 end)
 add("02-native-input-regression", function()
     dofile(root .. "/plugins/weui.koplugin/scripts/qa/fixtures/paper_input_checks.lua")({
         Paper = Paper, plugin = plugin,
     })
+end)
+local row_title, row_author, row_book
+add("02c-shelf-long-title", function()
+    local page = Paper._instance
+    row_book = page.books[1]
+    row_title, row_author = row_book.title, row_book.authors
+    row_book.title = "阅读与生活的秩序：关于时间、书籍与日常观察的思考"
+    row_book.authors = "这是一个用于验证完整作者信息的名字"
+    page.state.query, page.state.filter, page.state.page = "", "all", 1
+    page:rebuild()
+    local row
+    for _, item in ipairs(page.book_rows) do if item.book == row_book then row = item end end
+    assert(row, "long title book missing")
+    assert(#row.title.vertical_string_list <= row.title.lines_per_page, "book title was truncated")
+    assert(row.title.face.realname:find("PaperSong.ttf", 1, true), "book title is not serif")
+    assert(row.title.fgcolor:getColor8().a == 0 and row.author.fgcolor:getColor8().a <= 85,
+        "book information contrast")
+    local title_item, author_item
+    for _, item in ipairs(page.items) do
+        if item.widget == row.title then title_item = item end
+        if item.widget == row.author then author_item = item end
+    end
+    assert(title_item.y + row.title:getSize().h <= author_item.y, "title overlaps author")
+    geometry(page)
+end)
+add("02d-shelf-long-title-restore", function()
+    row_book.title, row_book.authors = row_title, row_author
+    Paper._instance:rebuild()
+end)
+add("02e-cover-fit-preserves-edges", function()
+    local Config = require("weui_config")
+    local BB = require("ffi/blitbuffer")
+    local path = root .. "/artifacts/cover-fit-probe.txt"
+    local f = assert(io.open(path, "w")); f:write("cover test"); f:close()
+    local original = Config.getBookInfoManager
+    local source
+    local ok, err = xpcall(function()
+        for _, dimensions in ipairs({ { 60, 100, 100, 60 }, { 100, 60, 60, 100 } }) do
+            local sw, sh, w, h = unpack(dimensions)
+            source = BB.new(sw, sh, BB.TYPE_BB8)
+            source:fill(BB.COLOR_WHITE)
+            source:paintBorder(0, 0, sw, sh, 8, BB.COLOR_BLACK)
+            Config.getBookInfoManager = function()
+                return { getBookInfo = function() return { cover_fetched = true, has_cover = true, cover_bb = source } end }
+            end
+            Config.invalidateCover(path)
+            local fit = assert(Config.getCoverBB(path, w, h, "fit"))
+            local ratio = math.min(w / sw, h / sh)
+            local fw, fh = math.floor(sw * ratio + 0.5), math.floor(sh * ratio + 0.5)
+            local x, y = math.floor((w - fw) / 2), math.floor((h - fh) / 2)
+            assert(fit:getPixel(x + 1, y + 1):getColor8().a < 32
+                and fit:getPixel(x + fw - 2, y + fh - 2):getColor8().a < 32, "cover borders were cropped")
+            assert(fit:getPixel(0, 0):getColor8().a == 255, "letterboxing is not white")
+            local fill = assert(Config.getCoverBB(path, w, h))
+            assert(fill:getPixel(math.floor(w / 2), math.floor(h / 2)):getColor8().a == 255,
+                "legacy cover fill changed")
+            Config.invalidateCover(path)
+            source:free(); source = nil
+        end
+    end, debug.traceback)
+    Config.getBookInfoManager = original
+    Config.invalidateCover(path)
+    if source then source:free() end
+    assert(ok, err)
 end)
 add("03-library-page-two", function()
     local page = Paper._instance
@@ -177,6 +293,29 @@ add("06-weread-source", function()
     assert(Paper._instance.wr == wr and Paper._instance.tab == "home", "secondary source navigation")
     assert(#wr.shelf_books == 8, "offline shelf restoration")
     geometry(Paper._instance)
+end)
+local saved_weread_view
+add("06a-weread-large-font-cover-view", function()
+    local wr = plugin._weread_plugin
+    local shelf = wr.settings:get("shelf")
+    saved_weread_view = shelf.view_mode
+    shelf.view_mode = "cover"
+    wr.settings:set("shelf", shelf)
+    wr:showShelfGrid(1, "books")
+    local page = Paper._instance
+    geometry(page)
+    for _, hit in ipairs(page.hits) do
+        if hit.y >= page:px(279) and hit.y < page:px(page.body_bottom - 40) then
+            assert(hit.y + hit.h <= page:px(page.body_bottom - 40), "large font book cell overlaps pager")
+        end
+    end
+end)
+add("06b-weread-cover-view-restore", function()
+    local wr = plugin._weread_plugin
+    local shelf = wr.settings:get("shelf")
+    shelf.view_mode = saved_weread_view
+    wr.settings:set("shelf", shelf)
+    wr:showShelfGrid(1, "books")
 end)
 add("07-source-back", function()
     Paper._instance:onClose()
@@ -1295,9 +1434,11 @@ add("77-weread-cached-detail-offline", function()
     wr.shelf_regular, wr.shelf_books = { wr_book }, { wr_book }
     wr_origin = Paper.navigate(plugin, "home")
     wr:showShelfGrid(1, "books")
-    assert(hasText(Paper._instance, "已缓存")
-        or hasText(Paper._instance, "纸页测试 · 已缓存 · 35%"),
-        "shelf omitted cache status")
+    local cached_label
+    for _, item in ipairs(Paper._instance.items) do
+        if item.widget and item.widget.text and item.widget.text:find("已缓存", 1, true) then cached_label = true end
+    end
+    assert(cached_label, "shelf omitted cache status")
     wr:showBookRecord({ bookId = "paper-qa", title = "山海小记", author = "纸页测试" })
     local sheet = topWidget()
     assert(sheet._weui_weread_sheet and sheet.view.kind == "detail", "book details retained legacy menu")

@@ -1,7 +1,7 @@
 -- Calendar and period details stay on the same Paper page.
 local BB = require("ffi/blitbuffer")
 local Library = require("weui_library")
-local ink, sub = BB.gray(0.91), BB.gray(0.66)
+local ink, sub = BB.COLOR_BLACK, BB.gray(0.72)
 local M = {}
 
 local function monthTime(date, offset)

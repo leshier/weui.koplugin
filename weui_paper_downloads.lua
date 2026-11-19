@@ -4,7 +4,7 @@ local Refresh = require("weui_refresh")
 local BB = require("ffi/blitbuffer")
 local Config = require("weui_config")
 local lfs = require("libs/libkoreader-lfs")
-local ink, sub, rule = BB.gray(0.91), BB.gray(0.66), BB.gray(0.28)
+local ink, sub, rule = BB.COLOR_BLACK, BB.gray(0.72), BB.gray(0.42)
 local labels = { queued = "等待下载", running = "正在下载", done = "已完成",
     failed = "失败 · 可重试", cancelled = "已取消", interrupted = "已中断 · 可继续" }
 local M = {}

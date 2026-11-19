@@ -97,6 +97,7 @@ local defaults = {
         view_mode = "list",
     },
     download_dir = "",
+    download_dir_follow_library = false,
 }
 
 local function deepcopy(value)
@@ -122,6 +123,16 @@ local function clear_auth_store(store)
     store:saveSetting("wr_ticket", "")
     store:saveSetting("wr_wrpa", "")
     store:saveSetting("account", deepcopy(defaults.account))
+end
+
+local function default_download_dir(settings)
+    if not settings.mock_endpoint and G_reader_settings then
+        local home = G_reader_settings:readSetting("home_dir")
+        if type(home) == "string" and home ~= "" then return home end
+        local ok, Device = pcall(require, "device")
+        if ok and Device.home_dir then return Device.home_dir end
+    end
+    return settings.default_cache_dir
 end
 
 function Settings:new()
@@ -154,9 +165,10 @@ function Settings:new()
         obj.store:saveSetting("download_dir", "")
         obj.store:flush()
     end
-    -- cache_dir is the download root; defaults to <data_dir>/cache unless overridden.
+    -- New downloads follow the library root unless a custom path was chosen.
     local download_dir = obj.store:readSetting("download_dir", "")
-    obj.cache_dir = (type(download_dir) == "string" and download_dir ~= "") and download_dir or obj.default_cache_dir
+    obj.cache_dir = not obj.store:readSetting("download_dir_follow_library")
+        and type(download_dir) == "string" and download_dir ~= "" and download_dir or default_download_dir(obj)
     ensure_dir(obj.cache_dir)
     local cache = obj.store:readSetting("cache", deepcopy(defaults.cache))
     local cache_changed = false
@@ -366,17 +378,26 @@ function Settings:get_all()
 end
 
 function Settings:get_download_dir()
+    local path = self:get("download_dir", "")
+    if self.mock_endpoint then return self.cache_dir end
+    if self:get("download_dir_follow_library") == true or type(path) ~= "string" or path == "" then
+        self.cache_dir = default_download_dir(self)
+    else
+        self.cache_dir = path
+    end
     return self.cache_dir
 end
 
 -- Pass nil or "" to reset to the default download directory.
-function Settings:set_download_dir(path)
+function Settings:set_download_dir(path, follow_library)
     if self.mock_endpoint then return self.cache_dir end
     if type(path) ~= "string" or path == "" then
         self:set("download_dir", "")
-        self.cache_dir = self.default_cache_dir
+        self:set("download_dir_follow_library", true)
+        self.cache_dir = default_download_dir(self)
     else
         self:set("download_dir", path)
+        self:set("download_dir_follow_library", follow_library == true)
         self.cache_dir = path
     end
     self:flush()

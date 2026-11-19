@@ -374,7 +374,7 @@ function SH.getBookCover(filepath, w, h, align, stretch_limit, force_reveal)
                     image_disposable = false,  -- shared cached BB; must not be freed
                     width            = inner_w,
                     height           = inner_h,
-                    scale_factor     = 1,
+                    scale_factor     = align == "fit" and 0 or 1,
                 }
             end)
             if ok and img then

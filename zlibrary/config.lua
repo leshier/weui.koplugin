@@ -23,6 +23,7 @@ Config.SETTINGS_SEARCH_EXTENSIONS_KEY = "zlibrary_search_extensions"
 Config.SETTINGS_SEARCH_ORDERS_KEY = "zlibrary_search_order"
 Config.SETTINGS_VIEW_SETTINGS_KEY = "zlibrary_view_settings"
 Config.SETTINGS_DOWNLOAD_DIR_KEY = "zlibrary_download_dir"
+Config.SETTINGS_FOLLOW_LIBRARY_KEY = "zlibrary_download_dir_follow_library"
 Config.SETTINGS_SKIP_OPEN_BOOK_PROMPT_KEY = "zlibrary_skip_open_book_prompt"
 Config.SETTINGS_AUTO_MIRROR_FAILOVER_KEY = "zlibrary_auto_mirror_failover"
 Config.SETTINGS_TIMEOUT_LOGIN_KEY = "zlibrary_timeout_login"
@@ -879,7 +880,14 @@ function Config.clearCredentials()
 end
 
 function Config.getDownloadDir()
-    return Config.getSetting(Config.SETTINGS_DOWNLOAD_DIR_KEY, Config.DEFAULT_DOWNLOAD_DIR_FALLBACK)
+    local path = Config.getSetting(Config.SETTINGS_DOWNLOAD_DIR_KEY)
+    if Config.getSetting(Config.SETTINGS_FOLLOW_LIBRARY_KEY) == true
+            or type(path) ~= "string" or path == "" then
+        local home = G_reader_settings:readSetting("home_dir")
+        return type(home) == "string" and home ~= "" and home
+            or require("apps/filemanager/filemanagerutil").getDefaultDir()
+    end
+    return path
 end
 
 function Config.getSearchLanguages()

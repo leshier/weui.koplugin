@@ -363,6 +363,7 @@ local function ensureDefaultDownloadDir()
 
     local ok_save, save_err = pcall(Config.saveSetting, key, root)
     if not ok_save then return false, tostring(save_err) end
+    if Config.SETTINGS_FOLLOW_LIBRARY_KEY then Config.saveSetting(Config.SETTINGS_FOLLOW_LIBRARY_KEY, true) end
     logger.info("weui: initialized Z-Library download directory to library root:", root)
     return true, root, true
 end

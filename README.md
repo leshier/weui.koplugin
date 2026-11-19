@@ -3,6 +3,31 @@
 A paper-style interface for KOReader, optimized for Kindle e-ink devices, with integrated
 WeRead (微信读书) and Z-Library book sources.
 
+Paper uses black serif headings and book titles, with readable dark-gray
+supporting labels. The shelf shows one book per row, three books per portrait
+page, with complete covers fitted to their slots and separate title, author
+and reading-status lines.
+Choose **书架 → 右上角菜单 → 设置书架主目录** to select the library folder.
+New Z-Library and WeRead downloads then default to that folder; existing files
+stay in place. An explicitly selected per-source download folder can override
+this default.
+
+## What's new in 1.5.6
+
+- Kindle typography uses black serif headings and book titles, larger readable
+  supporting text, and dark-gray author/date labels with regular weight.
+- The local shelf shows one book per row, three per portrait page. Covers fit
+  without cropping; long titles wrap above separate author and reading-status
+  lines. WeRead shelf views also reserve more space for each book.
+- Set the shelf's main folder from its top-right menu. New Z-Library and WeRead
+  downloads follow it, including WeRead's first initialization and restarts.
+  Existing files stay in place; custom per-source folders remain available.
+- Bundled font paths work on Kindle's KOReader versions that prepend their
+  font directory. Missing or unsupported bundled fonts fall back safely.
+- Validation includes 18 Lua regressions, 70 WeRead service specs, 217 native
+  UI scenarios, WeRead shelf/download flows, and PaperWhite 4 checks of actual
+  books, complete covers, pagination, tabs and persisted download folders.
+
 ## What's new in 1.5.5
 
 - Paper pages refresh the area containing changed text, progress bars and covers.

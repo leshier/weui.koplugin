@@ -96,7 +96,7 @@ return function(ctx)
         local page = ctx.Paper.navigate(ctx.plugin, "home")
         page.state.page = 1; page:rebuild()
         page._wheel_direction, page._wheel_time = nil, nil
-        assert(page.pages == 2, "wheel fixture needs two pages")
+        assert(page.pages == 3, "wheel fixture needs three detailed pages")
         local sec, usec = time.split_s_us(time.now())
         Device.input:handleSdlEv{
             code = require("ffi/SDL3").SDL.SDL_EVENT_MOUSE_WHEEL,

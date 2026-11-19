@@ -7,7 +7,7 @@ local UIManager = require("ui/uimanager")
 local Library = require("weui_library")
 local Privacy = require("weui_privacy")
 local BB = require("ffi/blitbuffer")
-local ink, sub, rule = BB.gray(0.91), BB.gray(0.66), BB.gray(0.28)
+local ink, sub, rule = BB.COLOR_BLACK, BB.gray(0.72), BB.gray(0.42)
 local M = {}
 
 function M.extend(Page)
