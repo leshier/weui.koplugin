@@ -5,6 +5,21 @@ release. It runs with an isolated `KO_HOME`, a 1072 x 1448 viewport, 300 DPI,
 Chinese UI, grayscale rendering, fake connected Wi-Fi, and a disposable sample
 library. It never reads or writes the operator's normal KOReader settings.
 
+The v1.5.4 initialization archive has a dedicated native regression:
+
+```sh
+python3 scripts/qa/run_initialize_qa.py --archive dist/weui.koplugin-initialize.zip
+```
+
+It seeds broken legacy Lua settings and `.old` fallbacks, legacy plugin classes,
+WeRead databases and old credentials. Initial startup, restart and copying the
+archive again must keep old Lua unexecuted, retire duplicate plugins, defer WeRead
+until opened, clear the initial login, paint all five Paper pages, retain native
+book data and persist the new account and preferences. The deterministic
+`scripts/test_initialize.lua` also exercises invalid requests, failed completion
+writes, rollback/retry, and ordinary installs. These checks support regression;
+Kindle startup/crash verification remains a separate hardware acceptance step.
+
 The paper interface has a separate native suite:
 
 ```sh

@@ -37,7 +37,7 @@ rsync -a \
     "$repo_dir/" "$work_dir/weui.koplugin/"
 
 for required in \
-    _meta.lua main.lua weui_paper.lua weui_paper_groups.lua weui_migrations.lua weui_network.lua \
+    _meta.lua main.lua weui_initialize.lua weui_paper.lua weui_paper_groups.lua weui_migrations.lua weui_network.lua \
     weui_paper_stats.lua weui_paper_downloads.lua \
     weui_weread_features.lua lib/weread_client.lua lib/weread_downloader.lua \
     weread/UPSTREAM.md weread/lib/settings.lua weread/lib/downloader.lua \
@@ -57,4 +57,9 @@ if grep -Eq '(^weui.koplugin/(scripts|design|\.github|\.screenshots|\.trae-html-
 fi
 test "$(sed -n 's#^\([^/]*\)/.*#\1#p' "$work_dir/contents.txt" | sort -u)" = "weui.koplugin"
 cp "$work_dir/weui.koplugin.zip" "$output_dir/weui.koplugin.zip"
-ls -lh "$output_dir/weui.koplugin.zip"
+# Only this separate, manually installed asset opts into clearing old settings.
+printf 'weui-initialize-1.5.4\n' > "$work_dir/weui.koplugin/weui-initialize.request"
+( cd "$work_dir" && zip -rq weui.koplugin-initialize.zip weui.koplugin )
+unzip -tq "$work_dir/weui.koplugin-initialize.zip"
+cp "$work_dir/weui.koplugin-initialize.zip" "$output_dir/weui.koplugin-initialize.zip"
+ls -lh "$output_dir/weui.koplugin.zip" "$output_dir/weui.koplugin-initialize.zip"

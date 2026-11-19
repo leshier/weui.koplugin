@@ -1,6 +1,12 @@
 -- main.lua — We UI
 -- Plugin entry point. Registers the plugin and delegates to specialised modules.
 
+local Initialize = require("weui_initialize")
+if not Initialize.run() then
+    return { disabled = true }
+end
+Initialize.record("startup: loading WeUI modules")
+
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local UIManager       = require("ui/uimanager")
 local InfoMessage     = require("ui/widget/infomessage")
@@ -267,7 +273,9 @@ end
 
 function WeUIPlugin:init()
     self._weui_tearing_down = nil
+    Initialize.record("startup: plugin init")
     local ok, err = pcall(function()
+        Initialize.retireLegacyPlugins()
         self:_migrateStandaloneZlibrary()
         -- -------------------------------------------------------------------
         -- One-shot rename migration: legacy (simpleui / lershierui) -> weui.
@@ -1248,6 +1256,7 @@ function WeUIPlugin:init()
         -- Z-Library is a child module of WeUI, not a second KOReader plugin.
         -- Create it before registering our unified menu and installing the UI
         -- and transport adapters below.
+        Initialize.record("startup: embedded Z-Library")
         self:_initZlibraryModule()
         self.ui.menu:registerToMainMenu(self)
         -- Register Z-Library's fullscreen browser and result lists with the
@@ -1291,11 +1300,13 @@ function WeUIPlugin:init()
         -- pulls in ~41 lib modules. Init 1s after startup so the homescreen
         -- paints first; onShowWeRead/onWeReadSyncProgress lazily init if the
         -- user opens WeRead before the deferred init fires.
-        require("ui/uimanager"):scheduleIn(1, function()
-            if not self._weread_plugin then
-                self:_initWeReadModule()
-            end
-        end)
+        if not SUISettings:isTrue("weui_weread_lazy_init") then
+            require("ui/uimanager"):scheduleIn(1, function()
+                if not self._weui_tearing_down and not self._weread_plugin then
+                    self:_initWeReadModule()
+                end
+            end)
+        end
 
         -- Register gesture-assignable actions via Dispatcher.
         -- After this, KOReader's gesture/keyboard settings will list these
@@ -1355,6 +1366,7 @@ function WeUIPlugin:init()
         end
 
         if SUISettings:nilOrTrue("weui_enabled") then
+            Initialize.record("startup: installing interface")
             Patches.installAll(self)
             
             pcall(function() QSBar.install() end)
@@ -1682,7 +1694,12 @@ function WeUIPlugin:init()
             end
         end
     end)
-    if not ok then logger.err("weui: init failed:", tostring(err)) end
+    if not ok then
+        Initialize.record("startup failed: " .. tostring(err))
+        logger.err("weui: init failed:", tostring(err))
+    else
+        Initialize.record("startup: ready")
+    end
 end
 
 -- ---------------------------------------------------------------------------

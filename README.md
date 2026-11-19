@@ -3,6 +3,35 @@
 A paper-style interface for KOReader, optimized for Kindle e-ink devices, with integrated
 WeRead (微信读书) and Z-Library book sources.
 
+## Clean initialization package (v1.5.4)
+
+If KOReader exits after an upgrade and you want to start with fresh WeUI settings,
+download **`weui.koplugin-initialize.zip`** from [Releases](../../releases).
+The ordinary `weui.koplugin.zip` and OTA updates preserve your settings.
+
+1. Fully exit KOReader and connect the Kindle by USB.
+2. Remove the old `koreader/plugins/weui.koplugin/` code directory, then extract
+   the initialization archive into `koreader/plugins/`. Remove old standalone
+   `simpleui.koplugin`, `lershierui.koplugin`, `weread.koplugin` and
+   `zlibrary.koplugin` code directories if present.
+3. Eject the Kindle and start KOReader. The first launch opens the file manager.
+   Use the bottom home tab to open Paper. WeRead loads when you open it; sign
+   in again and reconfigure your preferences.
+
+The reset runs before legacy settings are read or migrated. It isolates WeUI,
+SimpleUI/LershierUI, WeRead and Z-Library settings (including `.old` backups),
+credentials, account databases and plugin caches. Old files are retained under
+`koreader/settings/.weui-initialize-backup-<date>/`. Downloaded books, native
+KOReader annotations, progress, collections and statistics remain in place.
+WeRead uses a fresh download directory; previous download tasks are cleared.
+
+Initialization happens once, with a completion marker in
+`settings/.weui-initialize-completed`. Restarts and another copy of this same
+archive keep your newly saved settings. Startup stages are recorded in
+`koreader/settings/weui-initialize.log`. If startup still exits, provide this
+log, `koreader/crash.log` and the KOReader version for Kindle diagnosis.
+Mac/SDL regression checks do not establish a fix on Kindle hardware.
+
 ## What's new in v1.5.3
 
 - Local library scans yield between directory entries and books, reuse each
@@ -99,7 +128,7 @@ reading reports are disabled by default; enable them in settings when wanted.
 
 ### From a release (recommended)
 
-1. Download the single `weui.koplugin.zip` from the latest [Releases](../../releases).
+1. Download `weui.koplugin.zip` from the latest [Releases](../../releases).
    Z-Library is already embedded in WeUI; it is not a second KOReader plugin.
 2. Unzip it into your KOReader `plugins/` directory so that you end up with:
    ```

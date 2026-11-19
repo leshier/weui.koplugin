@@ -1,6 +1,6 @@
 name: Release
 
-# Build and publish one downloadable weui.koplugin.zip release asset whenever
+# Build and publish normal and opt-in initialization archives whenever
 # a version tag (v*) is pushed. Both book sources are vendored inside WeUI,
 # so the archive contains exactly one top-level .koplugin folder.
 # The OTA updater downloads this exact filename.
@@ -42,7 +42,7 @@ jobs:
           unzip -l stage/weui.koplugin.zip | sed -n '1,40p'
           echo "::endgroup::"
 
-      - name: Create release and upload asset
+      - name: Create release and upload assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -52,9 +52,9 @@ jobs:
           echo "Publishing release for tag $TAG"
           # Idempotent: create the release if missing, otherwise just (re)upload the asset.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" stage/weui.koplugin.zip --clobber
+            gh release upload "$TAG" stage/weui.koplugin.zip stage/weui.koplugin-initialize.zip --clobber
           else
-            gh release create "$TAG" stage/weui.koplugin.zip \
+            gh release create "$TAG" stage/weui.koplugin.zip stage/weui.koplugin-initialize.zip \
               --title "$TAG" \
               --generate-notes \
               --verify-tag
