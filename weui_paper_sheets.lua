@@ -125,7 +125,7 @@ function M.extend(Page, Paper)
                     callback = record.book and function() self:bookDetails(record.book) end }
             end
         elseif self.group then
-            title = self.group.label or (Privacy.isCollectionRevealed(self.group.name) and self.group.name or "私密分组")
+            title = self.group.label or (Privacy.isCollectionRevealed(self.group.name) and Library.collectionDisplayName(self.group.name) or "私密分组")
             local books = self:groupBooks(self.group)
             intro = #books .. " 本书"
             for _, book in ipairs(books) do entries[#entries + 1] = self:bookEntry(book) end
@@ -151,15 +151,15 @@ function M.extend(Page, Paper)
                 if name ~= Collections.default_collection_name then actual[#actual + 1] = { name = name } end
             end
             table.sort(actual, function(a, b)
-                local an = Privacy.isCollectionRevealed(a.name) and a.name or "私密分组"
-                local bn = Privacy.isCollectionRevealed(b.name) and b.name or "私密分组"
+                local an = Privacy.isCollectionRevealed(a.name) and Library.collectionDisplayName(a.name) or "私密分组"
+                local bn = Privacy.isCollectionRevealed(b.name) and Library.collectionDisplayName(b.name) or "私密分组"
                 return an < bn
             end)
             for _, group in ipairs(actual) do groups[#groups + 1] = group end
             for _, group in ipairs(groups) do
                 local revealed = not group.name or Privacy.isCollectionRevealed(group.name)
                 entries[#entries + 1] = {
-                    label = group.label or (revealed and group.name or "私密分组"),
+                    label = group.label or (revealed and Library.collectionDisplayName(group.name) or "私密分组"),
                     meta = revealed and (#self:groupBooks(group) .. " 本") or "已锁定",
                     group = group, callback = function() self:openGroup(group) end,
                 }

@@ -228,9 +228,13 @@ end
 -- Content area dimensions
 -- ---------------------------------------------------------------------------
 
-function M.getContentHeight()
+function M.getContentHeight(widget)
     local topbar_on = SUISettings:nilOrTrue("weui_topbar_enabled")
-    return Screen:getHeight() - _BB().TOTAL_H() - (topbar_on and _TB().TOTAL_TOP_H() or 0)
+    local navbar_h = _BB().TOTAL_H()
+    if widget and widget._navbar_style == "paper" then
+        navbar_h = SUISettings:nilOrTrue("weui_bar_enabled") and require("weui_paper").navbarHeight() or 0
+    end
+    return Screen:getHeight() - navbar_h - (topbar_on and _TB().TOTAL_TOP_H() or 0)
 end
 
 function M.getContentTop()
@@ -269,7 +273,7 @@ end
 -- Wraps an inner widget with the navbar layout (topbar + content + bottombar)
 -- ---------------------------------------------------------------------------
 
-function M.wrapWithNavbar(inner_widget, active_action_id, tabs, force_no_arrows)
+function M.wrapWithNavbar(inner_widget, active_action_id, tabs, force_no_arrows, widget)
     local Topbar    = _TB()
     local Bottombar = _BB()
     local screen_w  = Screen:getWidth()
@@ -278,12 +282,12 @@ function M.wrapWithNavbar(inner_widget, active_action_id, tabs, force_no_arrows)
     local topbar_on = SUISettings:nilOrTrue("weui_topbar_enabled")
     local navbar_on = SUISettings:nilOrTrue("weui_bar_enabled")
     local topbar_top = topbar_on and Topbar.TOTAL_TOP_H() or 0
-    local navbar_h   = Bottombar.TOTAL_H()
-    local content_h  = screen_h - topbar_top - navbar_h
+    local content_h  = M.getContentHeight(widget)
+    local navbar_h   = screen_h - topbar_top - content_h
 
     local bar
     if navbar_on then
-        bar = Bottombar.buildBarWidget(active_action_id, tabs, nil, nil, force_no_arrows)
+        bar = Bottombar.buildBarForWidget(widget, active_action_id, tabs, nil, nil, force_no_arrows)
     end
     -- Build topbar only once — wrapWithNavbar is the single point of construction.
     -- Callers must NOT call buildTopbarWidget() again after wrapWithNavbar returns.
@@ -345,7 +349,7 @@ function M.applyNavbarState(widget, container, bar, topbar, bar_idx, topbar_on, 
     widget._navbar_tabs              = tabs
     widget._navbar_bar_idx           = bar_idx
     widget._navbar_bar_idx_topbar_on = topbar_on
-    widget._navbar_content_h         = M.getContentHeight()
+    widget._navbar_content_h         = M.getContentHeight(widget)
     widget._navbar_topbar_h          = topbar_on and Topbar.TOTAL_TOP_H() or 0
 end
 
@@ -778,6 +782,7 @@ local function _validateBI(desc)
     if desc.on_inject ~= nil and type(desc.on_inject) ~= "function" then return "descriptor.on_inject must be a function when provided" end
     if desc.on_rewrap ~= nil and type(desc.on_rewrap) ~= "function" then return "descriptor.on_rewrap must be a function when provided" end
     if desc.on_close ~= nil and type(desc.on_close) ~= "function" then return "descriptor.on_close must be a function when provided" end
+    if desc.navbar_style ~= nil and desc.navbar_style ~= "paper" then return "descriptor.navbar_style must be paper when provided" end
     return nil
 end
 

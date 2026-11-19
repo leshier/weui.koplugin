@@ -260,6 +260,10 @@ function Download.run(self, book)
                 -- Returning to My Books must fetch the new download rather than
                 -- serving the list cached before it, potentially for a full day.
                 Config.getMultiSearchCache():remove("downloaded")
+                if self.embedded_in_weui then
+                    local Library = require("weui_library")
+                    Library.refresh(target_filepath)
+                end
 
                 -- Completing a book acquisition must not change system
                 -- connectivity. Readers often download several books in a

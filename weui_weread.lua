@@ -2326,6 +2326,8 @@ function WeReadPlugin:getPaperShelfBooks(tab)
 end
 
 function WeReadPlugin:queuePaperCover(book, page)
+    local view = page and page.view
+    if not view or view.kind ~= "detail" or view.book ~= book then return end
     if not book.cover or book.cover == "" or not self:isNetworkOnline() then return end
     local id = tostring(book.book_id or book.bookId or ""):gsub("[^%w_.-]", "_")
     if id == "" then return end
@@ -2335,7 +2337,8 @@ function WeReadPlugin:queuePaperCover(book, page)
     self._paper_cover_pending[id] = true
     UIManager:scheduleIn(0.05, function()
         self._paper_cover_pending[id] = nil
-        if page._closed or require("weui_paper")._instance ~= page or not self:isNetworkOnline() then return end
+        if page._closed or page.view ~= view or require("weui_paper")._instance ~= page
+                or not self:isNetworkOnline() then return end
         local dir = require("datastorage"):getSettingsDir() .. "/weread_covers"
         local path = dir .. "/" .. id .. ".jpg"
         if file_exists(path) then return end
@@ -2356,7 +2359,7 @@ function WeReadPlugin:queuePaperCover(book, page)
         end)
         if image then image:free() end
         if valid then os.rename(temporary, path) else os.remove(temporary); self._paper_cover_failed[id] = true end
-        if not page._closed then page:rebuild() end
+        if not page._closed and page.view == view then page:rebuild() end
     end)
 end
 
@@ -2442,6 +2445,7 @@ function WeReadPlugin:refreshShelfCacheIndicators()
 end
 
 function WeReadPlugin:refreshFileManagerIfVisible()
+    require("weui_library").refresh()
     local FM = package.loaded["apps/filemanager/filemanager"]
     local fm = FM and FM.instance
     if not fm or not fm.file_chooser then return end

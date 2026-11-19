@@ -53,8 +53,14 @@ function M.apply(Page)
 
     function Page:proxySettings()
         local Proxy = require("weui_zlibrary_proxy")
-        self:toolHeader("Z-Library 代理", "SOCKS5 · 由代理解析目标域名")
-        self:text("开启后，Z-Library 的所有请求经过代理。\n连接失败会中止请求。", 28, 183, 480, 12, { h = 44 })
+        local ZConfig = require("zlibrary.config")
+        self:toolHeader("Z-Library 账号与代理", "账号密码保存在本机，重启后继续使用")
+        local session = ZConfig.getUserSession()
+        self:row(nil, "登录并保存账号密码", session.user_id and session.user_key and "已登录" or ZConfig.hasCredentials() and "已保存 · 待验证" or "未登录",
+            179, function()
+                local zlib = self.plugin._zlibrary_plugin or self.plugin:_initZlibraryModule()
+                if zlib then zlib:_promptForCredentials(function() if not self._closed then self:rebuild() end end) end
+            end, 52)
         self:toolMenu(Proxy.getMenuItems(function()
             if not self._closed then self:rebuild() end
         end), 250, 52)

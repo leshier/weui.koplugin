@@ -1994,10 +1994,24 @@ function M.patchUIManagerShow(plugin)
         end
 
         widget._navbar_injected = true
+        if _bi_desc and _bi_desc.navbar_style == "paper" then
+            widget._navbar_style = "paper"
+            local origin = require("weui_paper").originTab() or widget._navbar_origin_tab
+            if not origin then
+                local stack = UI.getWindowStack()
+                for i = #stack, 1, -1 do
+                    local previous = stack[i].widget
+                    if previous and previous._navbar_style == "paper" and previous._navbar_origin_tab then
+                        origin = previous._navbar_origin_tab; break
+                    end
+                end
+            end
+            widget._navbar_origin_tab = origin or plugin._navbar_prev_action_pending or plugin.active_action
+        end
 
         -- Resize the widget to the content area if it is not already sized.
         if not widget._navbar_height_reduced then
-            local content_h   = UI.getContentHeight()
+            local content_h   = UI.getContentHeight(widget)
             local content_top = UI.getContentTop()
             if widget.dimen then
                 widget.dimen.h = content_h
@@ -2064,7 +2078,7 @@ function M.patchUIManagerShow(plugin)
                 or (widget.file_chooser and type(widget.file_chooser.page_num) == "number")
         end
         local navbar_container, wrapped, bar, topbar, bar_idx, topbar_on, topbar_idx =
-            UI.wrapWithNavbar(widget._navbar_inner, display_action, tabs, not widget_is_pageable)
+            UI.wrapWithNavbar(widget._navbar_inner, display_action, tabs, not widget_is_pageable, widget)
         UI.applyNavbarState(widget, navbar_container, bar, topbar, bar_idx, topbar_on, topbar_idx, tabs)
         widget._navbar_force_no_arrows = not widget_is_pageable
         widget._navbar_prev_action = action_before

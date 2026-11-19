@@ -39,6 +39,21 @@ function M.invalidate()
     cached, cached_at, cached_roots = nil, nil, nil
 end
 
+function M.collectionDisplayName(name)
+    if name == "To Be Read" then return require("weui_i18n").translate("To Be Read") end
+    if name == Collections.default_collection_name then return "收藏" end
+    return name
+end
+
+function M.refresh(path)
+    M.invalidate()
+    SH.invalidateSidecarCache(path)
+    if path then Config.invalidateCover(path) end
+    local Paper = package.loaded["weui_paper"]
+    local page = Paper and Paper._instance
+    if page and not page._closed then page:rebuild() end
+end
+
 function M.books(plugin, force)
     local roots = M.roots(plugin)
     local key = table.concat(roots, "\n")
@@ -167,10 +182,12 @@ function M.import(path)
         return nil, "请选择 KOReader 支持的书籍文件。"
     end
     local files = Store:get("weui_library_files") or {}
-    for _, old in ipairs(files) do if canonical(old) == path then return path end end
+    for _, old in ipairs(files) do
+        if canonical(old) == path then M.refresh(path); return path end
+    end
     files[#files + 1] = path
     Store:set("weui_library_files", files)
-    M.invalidate()
+    M.refresh(path)
     return path
 end
 

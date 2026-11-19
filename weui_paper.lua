@@ -194,9 +194,20 @@ function Page:filters(list, y, counts)
         x = x + width
     end
 end
-function Page:cover(book, x, y, w, h)
+function Page:cover(book, x, y, w, h, allow_source_cover)
+    if book.source_book and not allow_source_cover then
+        self:rect(x, y, w, h, BB.gray(0.04))
+        self:rect(x, y, w, h, rule, 0.7)
+        local size = math.min(44, w * 0.55, h * 0.55)
+        self:icon(Config.ICON.weread_book, x + (w - size) / 2, y + (h - size) / 2, size)
+        return
+    end
     local filepath = book.filepath or book.source_book and book.source_book.cached_file
     local cover = filepath and SH.getBookCover(filepath, self:px(w), self:px(h))
+    if not cover and filepath and not book.private and not Config.isCoverMissing(filepath) then
+        self._pending_cover_files = self._pending_cover_files or {}
+        self._pending_cover_files[filepath] = true
+    end
     if not cover and book.source_book then
         local id = tostring(book.source_book.book_id or book.source_book.bookId or ""):gsub("[^%w_.-]", "_")
         local path = require("datastorage"):getSettingsDir() .. "/weread_covers/" .. id .. ".jpg"
@@ -261,9 +272,10 @@ function Page:bookCell(book, x, y, w, cover_w, cover_h, compact)
         self:text("已缓存", badge_x + 3, y + cover_h - 17, 33, 8)
     end
     local title_y = y + cover_h + 7
-    local title = self:text(book.title, cover_x, title_y, cover_w, 13,
-        { font = "song", h = not compact and 30 or nil, height_adjust = true, line_height = 0.15 })
-    local info_y = title_y + title:getSize().h / self.scale + 4
+    local title_h = compact and 17 or 30
+    self:text(book.title, cover_x, title_y, cover_w, 13,
+        { font = "song", h = title_h, line_height = 0.15 })
+    local info_y = title_y + title_h + 4
     local info = self:bookReadingInfo(book, cover_x, info_y, cover_w)
     local bar_y = info_y + info:getSize().h / self.scale + 5
     self:readingProgress(book, cover_x, bar_y, cover_w)
@@ -283,7 +295,7 @@ function Page:bookDetails(book)
     if self.wr then return self.wr:showBookRecord(book.source_book) end
     local dialog
     local privacy_button = Privacy.genPrivacyButton(book.filepath, function()
-        UIManager:close(dialog); self:rebuild(true)
+        UIManager:close(dialog); self:rebuild()
     end)
     dialog = require("ui/widget/buttondialog"):new{
         title = book.title .. "\n" .. book.authors .. "\n" .. self:bookStatus(book),
@@ -620,7 +632,7 @@ function Page:statsOptions()
     dialog = require("ui/widget/buttondialog"):new{ title = "阅读统计", buttons = {
         { { text = "阅读目标", callback = function() UIManager:close(dialog); self:goals() end } },
         { { text = "日历与详细统计", callback = function()
-            UIManager:close(dialog); require("weui_stats_windows").showOverviewWindow()
+            UIManager:close(dialog); self.screen = "stats_details"; self:rebuild()
         end } },
         { { text = _("Close"), callback = function() UIManager:close(dialog) end } },
     } }
@@ -653,7 +665,7 @@ function Page:more()
     end, 42)
     self:row(Config.ICON.weui_privacy, "隐私与密码", Privacy.isUnlocked() and "已解锁" or "已锁定",
         479, function() self:privacySettings() end, 42)
-    self:row(Config.ICON.weui_proxy, "Z-Library 代理", require("weui_zlibrary_proxy").getStatusText(),
+    self:row(Config.ICON.weui_proxy, "Z-Library 账号与代理", require("weui_zlibrary_proxy").getStatusText(),
         521, function() self:showTool("proxy_settings") end, 42)
     self:row(Config.ICON.weui_lockscreen, "自定义锁屏", require("weui_lockscreen").getLabel(),
         563, function() self:showTool("lockscreen_settings") end, 42)
@@ -724,22 +736,7 @@ function Page:goals()
     return M.showSheet("reading_goals", self)
 end
 function Page:downloads()
-    local wr = self.plugin._weread_plugin
-    local dialog
-    dialog = require("ui/widget/buttondialog"):new{ title = "下载管理", buttons = {
-        { { text = "本机书籍", callback = function() UIManager:close(dialog); M.navigate(self.plugin, "home") end } },
-        { { text = "微信读书下载任务", callback = function() UIManager:close(dialog); if wr then wr:showDownloadTasks() end end } },
-        { { text = "微信读书离线缓存", callback = function()
-            UIManager:close(dialog)
-            if wr then require("ui/offline_manager").show() end
-        end } },
-        { { text = "Z-Library 下载目录", callback = function()
-            UIManager:close(dialog)
-            M.showFilePicker(self, "read", require("zlibrary.config").getDownloadDir())
-        end } },
-        { { text = _("Close"), callback = function() UIManager:close(dialog) end } },
-    } }
-    UIManager:show(dialog)
+    self:showTool("downloads")
 end
 function Page:deviceInfo()
     local version = require("version")
@@ -845,7 +842,7 @@ function Page:lineSortWeRead()
     end)
 end
 function Page:navbar()
-    local tabs = Config.loadTabConfig()
+    local tabs = self.navbar_tabs or Config.loadTabConfig()
     local y = self.logical_h - 66
     self:rect(24, y, 488, 0.7, ink)
     local w = 488 / #tabs
@@ -860,14 +857,42 @@ function Page:navbar()
         end)
     end
 end
+
+function M.navbarHeight()
+    return math.floor(66 * math.min(Screen:getWidth() / 536, Screen:getHeight() / 724) + 0.5)
+end
+
+local Navbar = Page:extend{ name = "weui_paper_navbar", _weui_paper_navbar = true }
+function Navbar:init()
+    self.scale = math.min(Screen:getWidth() / 536, Screen:getHeight() / 724)
+    self.logical_h = 66
+    self.offset = math.floor((Screen:getWidth() - self:px(536)) / 2)
+    self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = M.navbarHeight() }
+    self.items, self.hits = {}, {}
+    self:navbar()
+end
+-- The host's navbar touch zones own navigation on embedded pages.
+function Navbar:hit() end
+function Navbar:free() self:freeItems() end
+
+function M.newNavbar(action, tabs, origin)
+    tabs = tabs or Config.loadTabConfig()
+    if not Config.tabInTabs(action, tabs) then action = origin or M.originTab() or "home" end
+    return Navbar:new{ tab = action, navbar_tabs = tabs }
+end
+
 function Page:rebuild(force)
     self:freeItems()
+    if self.screen ~= "downloads" and self._download_timer then
+        UIManager:unschedule(self._download_timer); self._download_timer = nil
+    end
     self.scale = math.min(Screen:getWidth() / 536, Screen:getHeight() / 724)
     self.logical_h = Screen:getHeight() / self.scale
     self.offset = math.floor((Screen:getWidth() - self:px(536)) / 2)
     self.body_bottom = self.logical_h - 76
     self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
     self.items, self.hits = {}, {}
+    self._pending_cover_files = {}
     self.books = self.wr and {} or Library.books(self.plugin, force)
     self:text(os.date("%H:%M"), 28, 10, 150, 11)
     local power = Device:getPowerDevice()
@@ -876,10 +901,31 @@ function Page:rebuild(force)
     local builders = { homescreen = self.home, home = self.library, notes = self.notes, stats_calendar = self.stats,
         weui_settings = self.more, sources = self.sources, weread = self.weread,
         proxy_settings = self.proxySettings, lockscreen_settings = self.lockscreenSettings,
-        system_updates = self.systemUpdates }
+        system_updates = self.systemUpdates, stats_details = self.statsDetails,
+        downloads = self.downloadManager }
     builders[self.screen](self)
     self:navbar()
     UIManager:setDirty(self, "ui")
+    self:scheduleCoverRefresh()
+end
+
+function Page:scheduleCoverRefresh()
+    if self._cover_poll_timer then UIManager:unschedule(self._cover_poll_timer); self._cover_poll_timer = nil end
+    if not next(self._pending_cover_files or {}) then self._cover_poll_started = nil; return end
+    self._cover_poll_started = self._cover_poll_started or os.time()
+    Config.flushCoverQueue()
+    if os.time() - self._cover_poll_started > 45 then return end
+    self._cover_poll_timer = function()
+        self._cover_poll_timer = nil
+        if self._closed or M._instance ~= self then return end
+        local bim = Config.getBookInfoManager()
+        local running = bim and bim:isExtractingInBackground()
+        if not running then
+            for path in pairs(self._pending_cover_files or {}) do Config._cover_extract_pending[path] = nil end
+        end
+        self:rebuild()
+    end
+    UIManager:scheduleIn(1, self._cover_poll_timer)
 end
 function Page:getSize() return self.dimen end
 function Page:paintTo(bb, x, y)
@@ -944,11 +990,13 @@ function Page:scrollWeRead(delta)
     return true
 end
 function Page:onNextPage()
+    if self.screen == "downloads" then return self:downloadNextPage(1) end
     if self.weread_scroll then return self:scrollWeRead(self.weread_scroll.count) end
     if self.pages and self.state.page < self.pages then self.state.page = self.state.page + 1; self:rebuild() end
     return true
 end
 function Page:onPrevPage()
+    if self.screen == "downloads" then return self:downloadNextPage(-1) end
     if self.weread_scroll then return self:scrollWeRead(-self.weread_scroll.count) end
     if self.pages and self.state.page > 1 then self.state.page = self.state.page - 1; self:rebuild() end
     return true
@@ -964,10 +1012,11 @@ function Page:onNotes() M.navigate(self.plugin, "notes"); return true end
 function Page:onStats() M.navigate(self.plugin, "stats_calendar"); return true end
 function Page:onMore() M.navigate(self.plugin, "weui_settings"); return true end
 function Page:onClose()
-    if self.screen == "proxy_settings" or self.screen == "lockscreen_settings" or self.screen == "system_updates" then
+    if self.screen == "proxy_settings" or self.screen == "lockscreen_settings" or self.screen == "system_updates"
+            or self.screen == "downloads" then
         self:toolBack(); return true
     end
-    if self.screen == "sources" then self.screen = self.tab; self:rebuild(); return true end
+    if self.screen == "sources" or self.screen == "stats_details" then self.screen = self.tab; self:rebuild(); return true end
     self._navbar_closing_intentionally = true
     UIManager:close(self)
     if self.origin_page then
@@ -983,6 +1032,8 @@ function Page:freeItems()
 end
 function Page:onCloseWidget()
     self._closed = true
+    if self._cover_poll_timer then UIManager:unschedule(self._cover_poll_timer); self._cover_poll_timer = nil end
+    if self._download_timer then UIManager:unschedule(self._download_timer); self._download_timer = nil end
     self:freeItems()
     if M._instance == self then M._instance = nil end
     local HS = package.loaded["weui_homescreen"]
@@ -993,6 +1044,8 @@ function Page:_refresh(keep_cache) self:rebuild(not keep_cache) end
 function Page:_refreshImmediate(keep_cache) self:rebuild(not keep_cache) end
 
 require("weui_paper_tools").apply(Page)
+require("weui_paper_stats").apply(Page)
+require("weui_paper_downloads").apply(Page, M)
 
 function M.newLockscreen(mode, plugin, timestamp)
     local Snapshot = require("weui_paper_lockscreen").extend(Page)

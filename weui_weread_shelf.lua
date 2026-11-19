@@ -1,11 +1,10 @@
 -- weui_weread_shelf.lua — We UI
--- Cover-first WeRead shelf page. Replaces the old single-column menu shelf
+-- Icon-based WeRead shelf page. Replaces the old single-column menu shelf
 -- with the 4-column card grid used by the redesign, while keeping the legacy
 -- list (sort / filter / download toolbar) one tap away.
 
 local Blitbuffer      = require("ffi/blitbuffer")
 local CenterContainer = require("ui/widget/container/centercontainer")
-local DataStorage     = require("datastorage")
 local Device          = require("device")
 local Font            = require("ui/font")
 local FrameContainer  = require("ui/widget/container/framecontainer")
@@ -21,50 +20,19 @@ local TextWidget      = require("ui/widget/textwidget")
 local UIManager       = require("ui/uimanager")
 local VerticalGroup   = require("ui/widget/verticalgroup")
 local VerticalSpan    = require("ui/widget/verticalspan")
-local lfs             = require("libs/libkoreader-lfs")
 
 local Screen      = Device.screen
 local _           = require("weui_i18n").translate
 local Config      = require("weui_config")
 local SUIStyle    = require("weui_style")
 local UI          = require("weui_core")
-local SH          = require("desktop_modules/module_books_shared")
 
 local M = {}
-
-local COVER_DIR = DataStorage:getSettingsDir() .. "/weread_covers"
-pcall(lfs.mkdir, COVER_DIR)
 
 local CLR_BLACK = Blitbuffer.COLOR_BLACK
 local CLR_GRAY  = Blitbuffer.gray(0.52)
 local CLR_LINE  = Blitbuffer.gray(0.78)
 local CLR_LIGHT = Blitbuffer.gray(0.92)
-
-local function _bookId(book)
-    return tostring(book.book_id or book.bookId or book.cover or "")
-end
-
-local function _coverPath(book)
-    return COVER_DIR .. "/" .. _bookId(book):gsub("[^%w_.-]", "_") .. ".jpg"
-end
-
-local function _hasFile(path)
-    return lfs.attributes(path, "mode") == "file"
-end
-
-local function _coverImage(path, w, h)
-    local ok, img = pcall(function()
-        local i = ImageWidget:new{
-            file   = path,
-            width  = w,
-            height = h,
-            alpha  = true,
-        }
-        i:_render()
-        return i
-    end)
-    return (ok and img) or nil
-end
 
 local function _badge(text)
     local label = TextWidget:new{
@@ -151,29 +119,6 @@ end
 
 local function _close(root)
     if root then pcall(UIManager.close, UIManager, root) end
-end
-
-local function _fetchCovers(plugin, root, queue)
-    local item = table.remove(queue, 1)
-    if not item then return end
-    if not _hasFile(item.path) and item.book.cover and item.book.cover ~= "" then
-        local ok, data = pcall(function()
-            return plugin.client:get_binary(item.book.cover)
-        end)
-        if ok and type(data) == "string" and #data > 0 then
-            local f = io.open(item.path, "wb")
-            if f then f:write(data); f:close() end
-            local img = _coverImage(item.path, item.w, item.h)
-            if img and item.cover_box then
-                item.cover_box[1] = img
-                img.parent = item.cover_box
-                UIManager:setDirty(root, "ui")
-            end
-        end
-    end
-    UIManager:scheduleIn(0.25, function()
-        _fetchCovers(plugin, root, queue)
-    end)
 end
 
 function M.show(plugin, page, tab)
@@ -312,7 +257,6 @@ function M.show(plugin, page, tab)
     local start_idx = (page - 1) * per_page + 1
 
     local grid = VerticalGroup:new{ align = "left" }
-    local fetch_queue = {}
     for r = 0, rows - 1 do
         local row = HorizontalGroup:new{ align = "top" }
         for c = 0, cols - 1 do
@@ -321,12 +265,9 @@ function M.show(plugin, page, tab)
             if book then
                 local title = book.title or book.bookId or _("Untitled")
                 local author = book.author or ""
-                local path = _coverPath(book)
-                local cover
-                if _hasFile(path) then
-                    cover = _coverImage(path, cell_w, cover_h)
-                end
-                cover = cover or SH.coverPlaceholder(title, author, cell_w, cover_h)
+                local icon_size = math.floor(math.min(cell_w, cover_h) * 0.4)
+                local cover = ImageWidget:new{ file = Config.ICON.weread_book,
+                    width = icon_size, height = icon_size, is_icon = true, alpha = true }
 
                 local cover_box = CenterContainer:new{
                     dimen = Geom:new{ w = cell_w, h = cover_h },
@@ -385,12 +326,6 @@ function M.show(plugin, page, tab)
                     return true
                 end
                 row[#row + 1] = cell
-                if not _hasFile(path) and book.cover and book.cover ~= "" then
-                    fetch_queue[#fetch_queue + 1] = {
-                        book = book, path = path, cover_box = cover_box,
-                        w = cell_w, h = cover_h,
-                    }
-                end
             else
                 row[#row + 1] = HorizontalSpan:new{ width = cell_w }
             end
@@ -492,11 +427,6 @@ function M.show(plugin, page, tab)
         UIManager:scheduleIn(0.15, refresh)
     end)
 
-    if #fetch_queue > 0 then
-        UIManager:scheduleIn(0.5, function()
-            _fetchCovers(plugin, root, fetch_queue)
-        end)
-    end
 end
 
 return M

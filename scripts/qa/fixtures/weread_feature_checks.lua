@@ -60,6 +60,15 @@ return function(host, wr, root)
     wr:showShelfGrid(1, "books")
     local page = top()
     assert(page.screen == "weread" and #wr.shelf_groups >= 3)
+    local original_binary, shelf_cover_calls = wr.client.get_binary, 0
+    wr.client.get_binary = function() shelf_cover_calls = shelf_cover_calls + 1; error("shelf requested a cover") end
+    local cover_prefs = wr.settings:get("shelf")
+    cover_prefs.view_mode = "cover"
+    wr.settings:set("shelf", cover_prefs)
+    page:rebuild()
+    pump(function() return true end)
+    assert(shelf_cover_calls == 0 and not next(wr._paper_cover_pending or {}), "shelf cover HTTP queued")
+    wr.client.get_binary = original_binary
     shot("feature-01-shelf")
     wr:showMainMenu()
     assert(top()._weui_weread_sheet)
@@ -145,9 +154,22 @@ return function(host, wr, root)
     assert(task.status == "cancelled" and Content.full_download_completed_chapters(workspace, chapters)[1])
     shot("feature-06-cancel-checkpoint")
     control{ match = "", delay = 0, times = 0 }
-    local resumed = wr.downloader:start(book, chapters, "full", { foreground = true, offer_read = false })
+    local settings_reloaded = require("weread.lib.settings"):new()
+    local options = {}
+    for _, key in ipairs({ "client", "background_worker", "show_info", "show_transient", "refresh_ui",
+        "refresh_shelf", "open_file", "safe_callback", "require_login", "run_online_task", "is_connected",
+        "show_task", "task_updated" }) do options[key] = wr.downloader[key] end
+    options.settings = settings_reloaded
+    wr.downloader = require("lib.weread_downloader"):new(options)
+    local restored = assert(wr.downloader.tasks[task.id], "restart lost cancelled task")
+    assert(restored.status == "cancelled" and restored.request.suffix == "full", "restart lost resume request")
+    assert(wr.downloader:retryTask(restored), "saved task could not resume")
+    pump(function() return wr.downloader:getTasks()[1].id ~= task.id end)
+    local resumed = wr.downloader:getTasks()[1]
     pump(function() return resumed.status == "done" or resumed.status == "failed" end, 100)
     assert(resumed.status == "done", tostring(resumed.error))
+    -- Reuse the host settings object after validating disk persistence.
+    wr.settings = settings_reloaded
     assert(not require("libs/libkoreader-lfs").attributes(workspace.path))
     local full_path = assert(resumed.output_path)
     shot("feature-07-resumed")
@@ -157,7 +179,8 @@ return function(host, wr, root)
     assert(a and b and b.status == "queued")
     pump(function() return b.status == "done" or b.status == "failed" end, 60)
     assert(a.status == "done" and b.status == "done")
-    assert(book.cached_chapters["1"] and book.cached_chapters["2"])
+    assert(wr.settings:get("books", {})["900001"].cached_chapters["1"]
+        and wr.settings:get("books", {})["900001"].cached_chapters["2"])
     wr:showWereadCollection()
     assert(top()._weui_weread_sheet and #top().view.items >= 1)
     shot("feature-08-local-collection")

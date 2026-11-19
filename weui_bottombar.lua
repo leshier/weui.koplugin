@@ -777,6 +777,13 @@ function M.buildBarWidget(active_action_id, tab_config, num_tabs, mode, force_no
     return _buildBarContainer(hg_args, false)
 end
 
+function M.buildBarForWidget(widget, active_action_id, tabs, num_tabs, mode, force_no_arrows)
+    if widget and widget._navbar_style == "paper" then
+        return require("weui_paper").newNavbar(active_action_id, tabs, widget._navbar_origin_tab)
+    end
+    return M.buildBarWidget(active_action_id, tabs, num_tabs, mode, force_no_arrows)
+end
+
 -- Navpager-mode bar with explicit has_prev / has_next flags.
 -- Called both from buildBarWidget (which resolves flags via getNavpagerState)
 -- and from the updatePageInfo hook (which passes pre-snapshotted values).
@@ -911,11 +918,16 @@ function M.replaceBar(widget, new_bar, tabs)
         return
     end
     local old_bar = container[idx]
+    if widget._navbar_style == "paper" and not new_bar._weui_paper_navbar then
+        if new_bar.free then new_bar:free() end
+        new_bar = M.buildBarForWidget(widget, widget._weui_full_page_group, tabs or widget._navbar_tabs)
+    end
     if old_bar and old_bar.overlap_offset then
         new_bar.overlap_offset = old_bar.overlap_offset
     end
     container[idx]     = new_bar
     widget._navbar_bar = new_bar
+    if old_bar and old_bar._weui_paper_navbar then old_bar:free() end
 
     if tabs then widget._navbar_tabs = tabs end
 end
@@ -939,9 +951,12 @@ function M.registerTouchZones(plugin, fm_self)
     -- wrapWithNavbar / TOTAL_H so touch targets cover the entire bottom region.
     -- Using BAR_H() alone leaves the top separator and bottom safe-area bands
     -- where underlying scroll/content can still win hit-testing.
-    local nav_h     = navbar_on and M.TOTAL_H() or 0
-    local side_m    = M.SIDE_M()
-    local usable_w  = screen_w - side_m * 2
+    local paper_bar = fm_self and fm_self._navbar_style == "paper"
+    local scale = paper_bar and math.min(screen_w / 536, screen_h / 724)
+    local nav_h = navbar_on and (paper_bar and require("weui_paper").navbarHeight() or M.TOTAL_H()) or 0
+    local side_m = paper_bar and (math.floor((screen_w - math.floor(536 * scale + 0.5)) / 2)
+        + math.floor(24 * scale + 0.5)) or M.SIDE_M()
+    local usable_w = paper_bar and 488 * scale or screen_w - side_m * 2
     local bar_y     = navbar_on and (screen_h - nav_h) or screen_h
     local navpager  = Config.isNavpagerEnabled()
     -- Some injected pages (notably Z-Library) own their pagination and expose
@@ -955,6 +970,7 @@ function M.registerTouchZones(plugin, fm_self)
     local arrows_active = navpager and not force_no_arrows
     local total_slots = arrows_active and (num_tabs + 2) or num_tabs
     local widths      = M.getTabWidths(total_slots, usable_w)
+    if paper_bar then for i = 1, total_slots do widths[i] = usable_w / total_slots end end
 
     logger.dbg("weui tz: registerTouchZones on=", tostring(fm_self and fm_self.name),
         "navpager=", tostring(navpager),
@@ -1666,7 +1682,7 @@ function M.rebuildAllNavbars(plugin)
     local function rebuildWidget(w)
         if not w or not w._navbar_container or seen[w] then return end
         seen[w] = true
-        M.replaceBar(w, M.buildBarWidget(
+        M.replaceBar(w, M.buildBarForWidget(w,
             plugin.active_action, tabs, num_tabs, mode, w._navbar_force_no_arrows), tabs)
         if new_topbar then
             UI.replaceTopbar(w, new_topbar)
@@ -1723,7 +1739,6 @@ function M.rewrapAllWidgets(plugin)
     local tabs      = Config.loadTabConfig()
     local stack     = UI.getWindowStack()  -- read once for the entire operation
     local seen      = {}
-    local content_h = UI.getContentHeight()
     local content_y = UI.getContentTop()
 
     local function rewrapWidget(w)
@@ -1731,12 +1746,13 @@ function M.rewrapAllWidgets(plugin)
         seen[w] = true
         local inner = w._navbar_inner
         if not inner then return end
+        local content_h = UI.getContentHeight(w)
         -- wrapWithNavbar already builds bar AND topbar internally.
         -- We apply the returned topbar directly via applyNavbarState — no
         -- second buildTopbarWidget() call needed.
         local new_container, wrapped, bar, topbar, bar_idx, topbar_on2, topbar_idx =
             UI.wrapWithNavbar(inner, plugin.active_action or tabs[1] or "home", tabs,
-                w._navbar_force_no_arrows)
+                w._navbar_force_no_arrows, w)
         UI.applyNavbarState(w, new_container, bar, topbar, bar_idx, topbar_on2, topbar_idx, tabs)
         w[1] = wrapped
 

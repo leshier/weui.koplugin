@@ -34,7 +34,7 @@ msgid "Automatic server failover"
 msgstr "服务器自动切换"
 
 msgid "Set credentials"
-msgstr "设置账号信息"
+msgstr "Z-Library 登录"
 
 msgid "Login successful!"
 msgstr "登录成功！"
@@ -968,7 +968,7 @@ msgid "Enter password"
 msgstr "输入密码"
 
 msgid "Set and verify"
-msgstr "设置并验证"
+msgstr "登录并保存"
 
 msgid "Please fill in all fields"
 msgstr "请填写所有字段"

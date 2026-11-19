@@ -3,7 +3,24 @@
 A paper-style interface for KOReader, optimized for e-ink, with integrated
 WeRead (微信读书) and Z-Library book sources.
 
-## What's new in v1.5.1
+## What's new in v1.5.2
+
+- Z-Library search and result pages keep the Paper bottom bar, including empty
+  results, rotation and navigation changes.
+- **More → Z-Library account and proxy** provides a visible login entry. Account
+  credentials are saved locally, with passwords preserved exactly as entered.
+- WeRead shelves use uniform book icons to avoid loading remote covers while
+  browsing. Book details still load covers.
+- Calendar and week/month/year statistics switch within the same Paper page.
+  New local books refresh their covers automatically, and shelf cards use
+  consistent title and progress positions.
+- Marking a book private immediately locks and refreshes the visible library.
+  The Chinese system collection name is **待读**.
+- Download management shows persisted WeRead task history, progress, filters,
+  cancellation, retry/resume and reading actions. Returning from the reader
+  preserves the selected filter and page.
+
+## Upgrade layout refresh (v1.5.1)
 
 - The first restart after upgrading refreshes Paper's home renderer, five
   navigation tabs, bar dimensions and UI text scaling. This fixes legacy
@@ -38,6 +55,10 @@ The paper bookshelf supports online groups, reading/download filters, cover
 and list layouts, offline snapshots and continuous list browsing. Book details
 offer single, selected and full-book downloads. Full downloads retain verified
 chapter checkpoints after cancellation and resume when requested again.
+
+Open **More → Download management** to view and manage saved WeRead tasks.
+Interrupted tasks can resume their selected chapters after a restart.
+Clearing finished tasks keeps downloaded book files.
 
 Open **WeRead → Settings → Download settings → Chapter prefetch** to enable
 next-chapter downloads. Annotation prefetch is a separate opt-in and requires

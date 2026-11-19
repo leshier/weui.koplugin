@@ -225,20 +225,6 @@ for _, period in ipairs({ "week", "month", "year", "all" }) do
     end)
 end
 local stats_origin, stats_window
-local function widgetHasText(widget, text)
-    if type(widget) ~= "table" then return false end
-    if widget.text == text then return true end
-    for _, child in ipairs(widget) do if widgetHasText(child, text) then return true end end
-    return false
-end
-local function statsPill(widget, text)
-    if type(widget) ~= "table" then return end
-    if type(widget.onTapStatsPill) == "function" and widgetHasText(widget, text) then return widget end
-    for _, child in ipairs(widget) do
-        local result = statsPill(child, text)
-        if result then return result end
-    end
-end
 add("10a-statistics-rankings-centered", function()
     stats_origin = Paper._instance
     tap(stats_origin, 450, 543)
@@ -262,18 +248,18 @@ add("10b-statistics-ranking-book-back", function()
     topWidget().buttons[2][1].callback()
 end)
 add("10c-statistics-overview-month-transition", function()
-    local windows = require("weui_window")._open_instances
-    stats_window = assert(windows[#windows], "detailed statistics window missing")
-    assert(topWidget() == stats_window._wrapper, "detailed statistics window not foreground")
-    local pill = assert(statsPill(stats_window._wrapper, require("weui_i18n").translate("Month")), "month control missing")
-    pill:onTapStatsPill()
-    assert(not stats_window._wrapper._weui_window_instance, "overview controller not closed")
+    assert(topWidget() == stats_origin and stats_origin.screen == "stats_details", "details changed page")
+    stats_window = #UIManager._window_stack
+    for _, label in ipairs({ "月", "年", "全部", "近7天" }) do
+        tapLabel(stats_origin, label)
+        assert(topWidget() == stats_origin and #UIManager._window_stack == stats_window, "period added a window")
+        geometry(stats_origin)
+    end
+    stats_origin:moveStatsMonth(-1)
+    assert(hasText(stats_origin, "日历与详细统计"), "calendar navigation left details")
 end)
 add("10d-statistics-insights-close", function()
-    local windows = require("weui_window")._open_instances
-    local win = assert(windows[#windows], "month statistics did not open")
-    assert(win ~= stats_window and topWidget() == win._wrapper, "month statistics lost foreground")
-    win:close()
+    stats_origin:onClose()
     assert(Paper._instance == stats_origin and topWidget() == stats_origin, "month statistics close lost paper page")
 end)
 add("11-more", function() geometry(Paper.navigate(plugin, "weui_settings")) end)
@@ -491,9 +477,8 @@ end)
 add("27-password-mark-book", function()
     submit(password)
     assert(Privacy.isPrivateBook(files[2]), "long press did not mark book private")
-    assert(Privacy.isUnlocked(), "successful password did not start session")
+    assert(not Privacy.isUnlocked(), "marking private book left it temporarily visible")
     closeToPage()
-    Privacy.lockNow()
     local book = findBook(files[2])
     assert(book.private and book.title == Privacy.privateTitle(), "locked title leaked")
     assert(book.authors == Privacy.privateAuthor() and book.tags == "" and book.chapter == "", "locked metadata leaked")
@@ -1239,11 +1224,20 @@ end)
 add("76n-download-folder-paper-picker", function()
     local page = Paper.navigate(plugin, "weui_settings")
     tapLabel(page, "下载管理")
-    local dialog = topWidget()
+    assert(topWidget() == page and page.screen == "downloads", "download manager missing")
+    local downloader = page.plugin._weread_plugin.downloader
+    for i = 1, 8 do
+        local task = downloader:_newTask("book", "返回筛选测试 " .. i, 1)
+        downloader:_updateTask(task, { status = "done", progress = 1 })
+    end
+    page:rebuild()
+    tapLabel(page, "已完成")
+    page:onNextPage()
+    assert(page.state.download_page == 2, "download pagination missing")
     local config = require("zlibrary.config")
     local original = config.getDownloadDir
     config.getDownloadDir = function() return root end
-    dialog.buttons[4][1].callback()
+    tapLabel(page, "Z-Library 下载目录")
     config.getDownloadDir = original
     local picker = Paper._instance
     assert(picker._weui_paper_files and picker.mode == "read" and hasText(picker, "‹ 返回更多"), "download folder left paper")
@@ -1261,7 +1255,11 @@ add("76p-download-picker-restored", function()
     tapLabel(picker, "‹ 返回上个目录")
     assert(picker.path == require("ffi/util").realpath(root), "download return did not restore parent")
     tapLabel(picker, "取消")
-    assert(Paper._instance.screen == "weui_settings" and topWidget() == Paper._instance, "download cancel lost More")
+    assert(Paper._instance.screen == "downloads" and topWidget() == Paper._instance, "download cancel lost manager")
+    assert(Paper._instance.state.download_filter == "done" and Paper._instance.state.download_page == 2
+        and hasText(Paper._instance, "返回筛选测试 4"), "reader return lost download filter/page/tasks")
+    Paper._instance.plugin._weread_plugin.downloader:clearFinishedTasks()
+    Paper._instance:onClose()
     plugin = Paper._instance.plugin
 end)
 local wr, wr_book, wr_origin, wr_original, wr_calls, wr_download, wr_online
@@ -1574,7 +1572,13 @@ end
 -- Register tools only after the plugin and all existing flows have run.
 add("106-tools-register", function()
     local previous = #stages
-    dofile(root .. "/plugins/weui.koplugin/scripts/qa/fixtures/paper_tools_checks.lua")({
+    if os.getenv("WEUI_PAPER_POLISH_ONLY") ~= "1" then
+        dofile(root .. "/plugins/weui.koplugin/scripts/qa/fixtures/paper_tools_checks.lua")({
+            add = add, Paper = Paper, plugin = plugin, tapLabel = tapLabel, topWidget = topWidget,
+            closeToPage = closeToPage, geometry = geometry, hasText = hasText, root = root,
+        })
+    end
+    dofile(root .. "/plugins/weui.koplugin/scripts/qa/fixtures/paper_polish_checks.lua")({
         add = add, Paper = Paper, plugin = plugin, tapLabel = tapLabel, topWidget = topWidget,
         closeToPage = closeToPage, geometry = geometry, hasText = hasText, root = root,
     })
@@ -1650,6 +1654,14 @@ end
 userpatch.registerPatchPluginFunc("weui", function()
     if started then return end
     started = true
+    if os.getenv("WEUI_PAPER_POLISH_ONLY") == "1" then
+        local selected = {}
+        for _, stage in ipairs(stages) do
+            if stage.name == "01-home" or stage.name == "106-tools-register"
+                    or stage.name == "107-reader-patches-teardown" then selected[#selected + 1] = stage end
+        end
+        stages = selected
+    end
     if os.getenv("WEUI_PAPER_SLOW") == "1" then
         local selected = {}
         for _, stage in ipairs(stages) do

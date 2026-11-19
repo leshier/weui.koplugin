@@ -11,8 +11,7 @@ local function notice(text)
 end
 
 local function custom(name)
-    local tbr = package.loaded["desktop_modules/module_tbr"]
-    return name ~= Collections.default_collection_name and not (tbr and name == tbr.TBR_COLL_NAME)
+    return name ~= Collections.default_collection_name and name ~= "To Be Read"
 end
 
 function M.extend(Sheet)

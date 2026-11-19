@@ -57,6 +57,14 @@ notes/highlights/reviews/similar books, shelf sorting, late-request cancellation
 download refresh timer cleanup, and reading cached content in native ReaderUI.
 The default run uses deterministic API responses.
 
+Paper polish coverage checks Chinese system groups, Z-Library login and saved
+credentials, identical Paper navigation pixels on search/results/empty pages,
+rotation and tab taps, icon-only WeRead shelves, inline calendar period changes
+and leap-year boundaries, automatic cover extraction after import, immediate
+privacy masking, and download filters/cancellation with reader-return state.
+The native WeRead feature runner also reloads persisted download history and
+resumes the original chapter checkpoints.
+
 The current upstream reader services and the WeUI adapters have separate gates:
 
 ```sh

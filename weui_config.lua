@@ -1179,11 +1179,32 @@ function M.clearCoverCache()
     UIManager:scheduleIn(0.1, freeNext)
 end
 
+function M.invalidateCover(filepath)
+    -- Keep bitmaps alive until the old widgets have finished repainting.
+    local retired = {}
+    for key, entry in pairs(_bim_cover_cache) do
+        if key:sub(1, #filepath + 1) == filepath .. "|" then
+            retired[#retired + 1] = entry
+            _bim_cover_cache[key] = nil
+            _bim_cover_count = _bim_cover_count - 1
+        end
+    end
+    M._cover_extract_pending[filepath] = nil
+    require("ui/uimanager"):scheduleIn(0.1, function()
+        for _, entry in ipairs(retired) do
+            if type(entry) == "table" and entry.owned and entry.bb then entry.bb:free() end
+        end
+    end)
+end
+
 function M.flushCoverQueue()
     local queue = M._cover_extract_queue
     if not queue or #queue == 0 then return end
-    M._cover_extract_queue = {}
     local bim = M.getBookInfoManager()
+    -- Native BIM replaces its current worker when a new batch is submitted.
+    -- Leave new files queued until the current batch finishes.
+    if bim and bim:isExtractingInBackground() then return end
+    M._cover_extract_queue = {}
     if not bim then
         for _, fp in ipairs(queue) do M._cover_extract_pending[fp] = nil; M._cover_extract_specs[fp] = nil end
         return

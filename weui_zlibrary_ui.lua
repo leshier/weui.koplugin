@@ -390,6 +390,7 @@ local function isZlibraryPage(widget)
             and inheritsFrom(widget, ZlibraryMenu)) then
         return false
     end
+    if widget._zlibrary_results_page then return true end
 
     -- zlibrary.menu is also used for language/format selectors, timeout
     -- settings and base-URL diagnostics.  Some of those persist changes only
@@ -547,7 +548,7 @@ end
 
 local function resizeZlibraryPage(widget)
     local UI = require("weui_core")
-    local content_h = UI.getContentHeight()
+    local content_h = UI.getContentHeight(widget)
     if content_h <= 0 then return end
     local screen_w = Screen:getWidth()
 
@@ -596,7 +597,7 @@ local function activateZlibraryTab(widget, context)
         if not (target and target._navbar_container) then return end
         if force_no_arrows then target._navbar_force_no_arrows = true end
         Bottombar.replaceBar(target,
-            Bottombar.buildBarWidget(GROUP_ID, tabs, nil, nil, force_no_arrows), tabs)
+            Bottombar.buildBarForWidget(target, GROUP_ID, tabs, nil, nil, force_no_arrows), tabs)
     end
 
     -- Keep the hidden FM in its own global pagination mode. The capability
@@ -726,6 +727,7 @@ function M.install()
         id = DESCRIPTOR_ID,
         match = isZlibraryPage,
         active_action_id = GROUP_ID,
+        navbar_style = "paper",
         -- Z-Library manages its own pagination.  Keeping navpager arrows out
         -- of the shared bar avoids two competing page-state authorities.
         is_pageable = false,

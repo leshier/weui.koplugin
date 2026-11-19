@@ -576,7 +576,7 @@ function M.isPrivateBook(path, title)
     return false
 end
 
-function M.setPrivateBook(path, enabled, title)
+function M.setPrivateBook(path, enabled, title, lock_after_save)
     path = norm(path)
     if path == "" and normalizeTitle(title) == "" then return end
     local books = getBooks()
@@ -601,7 +601,7 @@ function M.setPrivateBook(path, enabled, title)
         end
     end
     saveBooks(books)
-    invalidateBookCaches(path)
+    if enabled and lock_after_save then lockNow() else invalidateBookCaches(path) end
 end
 
 function M.hasPassword()
@@ -1148,7 +1148,7 @@ function M.genPrivacyButton(path, close_refresh)
         text = is_private and _("Remove private book") or _("Set as private book"),
         callback = function()
             local function finish(enabled)
-                M.setPrivateBook(path, enabled, title)
+                M.setPrivateBook(path, enabled, title, true)
                 if close_refresh then close_refresh() end
                 showInfo(enabled and _("This book is now private.") or _("This book is no longer private."))
             end

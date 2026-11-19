@@ -25,12 +25,12 @@ return function(ctx)
         plugin:_onTabTap("weui_settings", plugin.ui)
         page = Paper._instance
         assert(page and page.screen == "weui_settings" and top() == page, "native More tab opened the legacy settings menu")
-        for _, name in ipairs({ "Z-Library 代理", "自定义锁屏", "系统更新" }) do
+        for _, name in ipairs({ "Z-Library 账号与代理", "自定义锁屏", "系统更新" }) do
             tapLabel(page, name); geometry(page)
             assert(top() == page and page.tab == "weui_settings", "tool opened outside More")
             page:onClose(); assert(page.screen == "weui_settings", "tool Back lost More")
         end
-        tapLabel(page, "Z-Library 代理")
+        tapLabel(page, "Z-Library 账号与代理")
         proxy_items = Proxy.getMenuItems()
         tapLabel(page, label(1))
         assert(top().text:find("代理"), "missing-server error absent")

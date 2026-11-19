@@ -603,6 +603,7 @@ function Ui.createSearchResultsMenu(parent_ui_ref, query_string, initial_menu_it
         onGotoPage = on_goto_page_handler,
         is_popout = false,
         is_borderless = true,
+        _zlibrary_results_page = true,
         title_bar_fm_style = true,
         multilines_show_more_text = true,
         list_per_page =opts and opts.search_per_page,
@@ -1270,7 +1271,7 @@ function Ui.showCredentialsDialog(validate_and_save_callback, opts)
                     callback = function()
                         local fields = dialog:getFields()
                         local trimmed_email = util.trim(fields[1] or "")
-                        local trimmed_password = util.trim(fields[2] or "")
+                        local trimmed_password = fields[2] or ""
                         if trimmed_email == "" or trimmed_password == "" then
                             Ui.showInfoMessage(T("Please fill in all fields"))
                             return

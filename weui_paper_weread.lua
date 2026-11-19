@@ -185,7 +185,7 @@ function M.extend(Sheet, Paper)
         self.pages = nil
         local height = math.min(632, self.logical_h - 46)
         local y = self:frame("书籍详情", height, #self.history > 0)
-        self:cover({ title = book.title or "未命名", authors = book.author or "", source_book = book }, 38, y, 108, 151)
+        self:cover({ title = book.title or "未命名", authors = book.author or "", source_book = book }, 38, y, 108, 151, true)
         local progress = math.min(100, math.max(0, tonumber(book.progress) or 0))
         local reading = { authors = book.author or "作者未提供", percent = progress / 100,
             status = book.finishReading == 1 and "done" or nil }
@@ -284,6 +284,7 @@ function M.extend(Sheet, Paper)
         self.offset = math.floor((Screen:getWidth() - self:px(536)) / 2)
         self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
         self.items, self.hits = {}, {}
+        self._pending_cover_files = {}
         if self.view then
             if self.view.kind == "detail" then self:drawBook()
             elseif self.view.kind == "text" then self:drawText()
@@ -292,6 +293,7 @@ function M.extend(Sheet, Paper)
             else self:drawRows() end
         end
         UIManager:setDirty(self, "ui")
+        self:scheduleCoverRefresh()
     end
 
     function View:onCloseWidget()
