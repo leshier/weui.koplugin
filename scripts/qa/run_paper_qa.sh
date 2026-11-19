@@ -14,7 +14,9 @@ ln -s "$repo_dir" "$qa_root/plugins/weui.koplugin"
 printf 'Paper QA root: %s\n' "$qa_root"
 status=0
 KO_HOME="$qa_root" WEUI_PAPER_QA_ROOT="$qa_root" \
-    EMULATE_READER_W=536 EMULATE_READER_H=724 EMULATE_READER_DPI=300 \
+    EMULATE_READER_W="${EMULATE_READER_W:-536}" \
+    EMULATE_READER_H="${EMULATE_READER_H:-724}" \
+    EMULATE_READER_DPI="${EMULATE_READER_DPI:-300}" \
     python3 "$repo_dir/scripts/qa/monitor_runtime.py" \
     "$koreader_dir/luajit" "$koreader_dir/reader.lua" "$qa_root/artifacts" \
     >"$qa_root/artifacts/koreader.log" 2>&1 || status=$?

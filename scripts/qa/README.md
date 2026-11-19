@@ -9,6 +9,7 @@ The paper interface has a separate native suite:
 
 ```sh
 sh scripts/qa/run_paper_qa.sh
+python3 scripts/qa/run_paper_upgrade_qa.py
 ```
 
 It uses a new temporary `KO_HOME` for each run, original sample books and a
@@ -19,6 +20,14 @@ includes the More entry, first-time password setup, wrong/empty passwords,
 password changes, private collections, authenticated private reading, automatic
 relock and timer cancellation, immediate note masking, private viewer closure,
 and refusing exports from stale records while locked.
+
+The upgrade runner seeds a v1.5.0 profile before plugin initialization, including
+old renderer selection, 150% scaling and preloaded navigation/dimension caches.
+It renders the five pages at 600×800/167 DPI, 758×1024/212 DPI,
+1072×1448/300 DPI and 1236×1648/300 DPI, checks the display backup and retained
+accounts/collections/privacy/notes/progress/statistics, then restarts each
+profile to verify that newly selected display preferences are not reset.
+Use `--archive dist/weui.koplugin.zip` to run these checks on a release package.
 
 Shortcut coverage includes native paper bottom sheets for favorites, history and
 goals; aliases from More, statistics and Recent/All; real collection membership;

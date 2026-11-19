@@ -1227,7 +1227,9 @@ function WeUIPlugin:init()
             SUISettings:set("weui_settings_migrated_v10_restore_classic_ui", true)
             SUISettings:flush()
         end
-        require("weui_migrations").paper(SUISettings, Config)
+        if require("weui_migrations").paper(SUISettings, Config) then
+            logger.info("weui: refreshed Paper layout settings; previous display values backed up")
+        end
         Config.migrateOldCustomSlots()
         -- Always run sanitizeQASlots: it cleans both custom QA slot references
         -- and any stale built-in IDs from navbar_tabs.  The function is cheap —

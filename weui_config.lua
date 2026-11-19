@@ -673,10 +673,8 @@ M.NAVBAR_LABEL_SCALE_MAX  = NAVBAR_LABEL_SCALE_MAX
 M.NAVBAR_LABEL_SCALE_STEP = SCALE_STEP
 
 -- Global Font Scale (Style ▸ Text Size)
--- Multiplies SUIStyle's five FS_* typographic levels (title/subtitle/body/
--- detail/caption). Unlike the per-bar scales above, FS_* is baked into
--- module-level constants at weui_style.lua load time, so a change here only
--- takes full effect after a restart — mirrors the UI Font picker.
+-- patchFontGetFace captures this multiplier at install time for KOReader UI
+-- text. A change takes full effect after a restart, like the UI Font picker.
 local FONT_SCALE_KEY  = "weui_style_font_scale_pct"
 local FONT_SCALE_DEF  = 100
 local FONT_SCALE_MIN  = 50
@@ -1503,8 +1501,15 @@ function M.applyFirstRunDefaults()
     SUISettings:flush()
 end
 
+function M.invalidateLayoutCaches()
+    _tabs_cache, _navbar_mode_cache, _BASE_LABEL_TEXT_H = nil, nil, nil
+    local core = package.loaded["weui_core"]
+    if core and core.invalidateDimCache then core.invalidateDimCache() end
+end
+
 function M.reset()
-    _tabs_cache, _navbar_mode_cache, M.wifi_optimistic = nil, nil, nil
+    M.invalidateLayoutCaches()
+    M.wifi_optimistic = nil
     M.cover_extraction_pending, M._cover_extract_queue, M._cover_extract_pending, M._cover_extract_specs = false, {}, {}, {}
     _Device, _NetworkMgr, _has_wifi_toggle, _topbar_item_labels, _SQ3, _lfs_mod, _BookInfoManager, _topbar_cfg_menu_cache, _ReadCollection = nil, nil, nil, nil, nil, nil, nil, nil, nil
     _QA_lazy().clearQAKeyCache()

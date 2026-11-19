@@ -3,7 +3,19 @@
 A paper-style interface for KOReader, optimized for e-ink, with integrated
 WeRead (微信读书) and Z-Library book sources.
 
-## What's new in v1.5.0
+## What's new in v1.5.1
+
+- The first restart after upgrading refreshes Paper's home renderer, five
+  navigation tabs, bar dimensions and UI text scaling. This fixes legacy
+  settings that could select the old home layout or enlarge text on Kindle.
+- Previous display values are backed up in
+  `settings/weui/weui_settings.lua` under `weui_paper_layout_backup_v1`.
+  Accounts, books, groups, privacy settings, notes, progress, statistics and
+  network/download preferences are preserved.
+- The refresh runs once per layout revision. Subsequent restarts and updates
+  with the same revision keep any new display preferences.
+
+## Paper features (v1.5.0)
 
 - Five main pages: reading room, bookshelf, notes, statistics and more.
   Book titles, authors, reading percentages and progress bars share one layout;
@@ -14,9 +26,9 @@ WeRead (微信读书) and Z-Library book sources.
 - WeRead 1.7.0 reader services, resumable chapter downloads, optional prefetch,
   external annotations and progress synchronization.
 - Custom sleep screens and a combined WeUI/KOReader update page.
-- Direct migration from stock layouts preserves custom home layouts and
-  personal display settings. Release packages contain runtime files and
-  third-party licenses, with development previews and test fixtures excluded.
+- Legacy module layouts remain stored for later use. Release packages contain
+  runtime files and third-party licenses, with development previews and test
+  fixtures excluded.
 
 ## WeRead reader features
 

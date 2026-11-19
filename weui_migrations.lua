@@ -1,59 +1,63 @@
--- Migrate released stock layouts directly to Paper without applying
--- intermediate dashboard experiments or overwriting personal display settings.
+-- Refresh presentation settings once per Paper layout revision. Account and
+-- reading data, including legacy module layouts, remain in their own keys.
 local M = {}
-local PAPER_KEY = "weui_settings_migrated_v15_paper"
+local REVISION = 1
+local REVISION_KEY = "weui_paper_layout_revision"
+local BACKUP_KEY = "weui_paper_layout_backup_v1"
 
-local function same(values, expected)
-    if type(values) ~= "table" or #values ~= #expected then return false end
-    for i, value in ipairs(expected) do
-        if values[i] ~= value then return false end
-    end
-    return true
-end
-
-local function stockTabs(tabs)
-    if type(tabs) ~= "table" then return true end
-    if #tabs == 6 and tabs[1] == "home" and tabs[2] == "weui_settings"
-            and tabs[3] == "homescreen" and tabs[4] == "weread" then
-        return (tabs[5] == "history" and (tabs[6] == "power" or tabs[6] == "zlibrary"))
-            or (tabs[5] == "zlibrary" and tabs[6] == "power")
-    end
-    return same(tabs, { "homescreen", "home", "weread", "stats_calendar", "weui_settings" })
-        or same(tabs, { "homescreen", "home", "notes", "stats_calendar", "weui_settings" })
-        or same(tabs, { "homescreen", "weread", "home", "stats_calendar", "weui_settings" })
+local function copy(value)
+    if type(value) ~= "table" then return value end
+    local result = {}
+    for key, item in pairs(value) do result[key] = copy(item) end
+    return result
 end
 
 function M.paper(store, config)
-    if store:isTrue(PAPER_KEY) then return end
-    if stockTabs(store:get("weui_bar_tabs")) then
-        local tabs = {}
-        for i, id in ipairs(config.DEFAULT_TABS) do tabs[i] = id end
-        store:set("weui_bar_tabs", tabs)
-        config.invalidateTabsCache()
-    end
-    -- Keep custom home layouts usable through the original module renderer.
-    local layout = store:get("weui_layout")
-    local pages = type(layout) == "table" and layout.pages
-    local page = type(pages) == "table" and pages[1]
-    local modules = type(page) == "table" and page.modules
-    if type(modules) ~= "table" then modules = store:get("weui_hs_module_order") end
-    local stock = type(modules) ~= "table" or #modules == 0
-        or same(modules, { "clock", "currently", "recent" })
-        or same(modules, { "dashboard_header", "currently", "quick_actions_row_000001", "recent" })
-        or same(modules, { "dashboard_header", "currently", "reading_stats", "quick_actions_row_000001", "recent" })
-    if type(pages) == "table" then
-        for i = 2, #pages do
-            local other = type(pages[i]) == "table" and pages[i].modules
-            if i > 2 or (type(other) == "table" and #other > 0
-                    and not same(other, { "quote", "new_books", "tbr" })
-                    and not same(other, { "reading_stats", "quote", "new_books", "tbr" })) then
-                stock = false
+    if (tonumber(store:get(REVISION_KEY)) or 0) >= REVISION then return false end
+    -- v1.5.0's migration flag cannot guard this repair: first-run defaults
+    -- were mistaken for a custom layout, and legacy font scaling survived.
+    -- Run before patchFontGetFace captures the global scale at plugin init.
+    local defaults = {
+        weui_paper_home = true,
+        weui_bar_tabs = config.DEFAULT_TABS,
+        weui_bar_enabled = true,
+        weui_topbar_enabled = true,
+        weui_bar_mode = "both",
+        weui_bar_navpager_enabled = false,
+        weui_navbar_transparent = false,
+        weui_statusbar_transparent = false,
+        weui_style_font_scale_pct = 100,
+        weui_bar_size_pct = 100,
+        weui_topbar_size_pct = 100,
+        weui_bar_bottom_margin_pct = 100,
+        weui_bar_icon_scale_pct = 100,
+        weui_bar_label_scale_pct = 100,
+        weui_bar_rs_text_scale_pct = 100,
+        weui_hs_module_scale = 100,
+        weui_hs_label_scale = 100,
+        weui_hs_scale_linked = false,
+    }
+    if store:get(BACKUP_KEY) == nil then
+        local backup = { revision = REVISION, values = {}, absent = {} }
+        for key in pairs(defaults) do
+            local value = store:get(key)
+            if value == nil then
+                backup.absent[key] = true
+            else
+                backup.values[key] = copy(value)
             end
         end
+        store:setNoFlush(BACKUP_KEY, backup)
     end
-    if store:get("weui_paper_home") == nil then store:set("weui_paper_home", stock) end
-    store:set(PAPER_KEY, true)
+    for key, value in pairs(defaults) do
+        store:setNoFlush(key, copy(value))
+    end
+    config.invalidateLayoutCaches()
+    store:setNoFlush("weui_settings_migrated_v15_paper", true)
+    store:setNoFlush(REVISION_KEY, REVISION)
+    -- Persist the backup, refreshed values and completion marker together.
     store:flush()
+    return true
 end
 
 return M
