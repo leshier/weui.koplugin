@@ -5,6 +5,7 @@ local BB = require("ffi/blitbuffer")
 local Geom = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local UIManager = require("ui/uimanager")
+local Refresh = require("weui_refresh")
 local Library = require("weui_library")
 local Store = require("weui_store")
 local Config = require("weui_config")
@@ -311,7 +312,7 @@ function M.extend(Page, Paper)
         if self.screen == "reading_goals" then
             if self.picking_annual then self:annualChoices() else self:goals() end
         else self:list() end
-        UIManager:setDirty(self, "ui")
+        Refresh.update(self)
     end
 
     function Sheet:paintTo(bb, x, y)
@@ -319,6 +320,7 @@ function M.extend(Page, Paper)
         local top = self:px(28)
         bb:blendRectRGB32(x, y + top, self.dimen.w, self.dimen.h - top, BB.ColorRGB32(255, 255, 255, 220))
         self:paintItems(bb, x + self.offset, y)
+        Refresh.painted(self)
     end
 
     function Sheet:onTapPaper(_, ges)

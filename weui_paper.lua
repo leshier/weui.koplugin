@@ -10,6 +10,7 @@ local TextWidget = require("ui/widget/textwidget")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local ImageWidget = require("ui/widget/imagewidget")
 local UIManager = require("ui/uimanager")
+local Refresh = require("weui_refresh")
 local Store = require("weui_store")
 local Config = require("weui_config")
 local Library = require("weui_library")
@@ -898,9 +899,11 @@ function Page:rebuild(force)
     if force and not needs_books then Library.invalidate() end
     self.books = self.wr and {} or needs_books and Library.books(self.plugin, force, true) or Library.snapshot()
     self:text(os.date("%H:%M"), 28, 10, 150, 11)
+    self._clock_item = self.items[#self.items]
     local power = Device:getPowerDevice()
     local capacity = power and power.getCapacity and power:getCapacity()
     self:text(capacity and (capacity .. "%") or "KOReader", 358, 10, 150, 11, { align = "right", color = sub })
+    self._battery_item = self.items[#self.items]
     local builders = { homescreen = self.home, home = self.library, notes = self.notes, stats_calendar = self.stats,
         weui_settings = self.more, sources = self.sources, weread = self.weread,
         proxy_settings = self.proxySettings, lockscreen_settings = self.lockscreenSettings,
@@ -908,8 +911,21 @@ function Page:rebuild(force)
         downloads = self.downloadManager }
     builders[self.screen](self)
     self:navbar()
-    UIManager:setDirty(self, "ui")
+    Refresh.update(self)
     self:scheduleCoverRefresh()
+end
+
+function Page:refreshStatusBar()
+    if self._closed or not self._clock_item or not Refresh.awake(self.plugin) or not Refresh.visible(self) then return end
+    local clock, battery = self._clock_item.widget, self._battery_item.widget
+    local power = Device:getPowerDevice()
+    local capacity = power and power.getCapacity and power:getCapacity()
+    local time, charge = os.date("%H:%M"), capacity and (capacity .. "%") or "KOReader"
+    if clock.text == time and battery.text == charge then return end
+    clock:setText(time)
+    battery:setText(charge)
+    self._battery_item.x = self:px(508) - battery:getSize().w
+    Refresh.update(self)
 end
 
 function Page:scheduleCoverRefresh()
@@ -943,6 +959,7 @@ function Page:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     bb:paintRect(x, y, self.dimen.w, self.dimen.h, BB.COLOR_WHITE)
     self:paintItems(bb, x + self.offset, y)
+    Refresh.painted(self)
 end
 function Page:paintItems(bb, x, y)
     for _, item in ipairs(self.items) do
@@ -1016,6 +1033,10 @@ function Page:onSetRotationMode(mode)
     Screen:setRotationMode(mode); self:rebuild(); return true
 end
 function Page:onScreenResize() self:rebuild(); return true end
+function Page:onSuspend()
+    if self._download_timer then UIManager:unschedule(self._download_timer); self._download_timer = nil end
+    if self._task_refresh_timer then UIManager:unschedule(self._task_refresh_timer); self._task_refresh_timer = nil end
+end
 function Page:onResume() self:rebuild(true) end
 function Page:onRoom() M.navigate(self.plugin, "homescreen"); return true end
 function Page:onShelf() M.navigate(self.plugin, "home"); return true end
@@ -1045,7 +1066,10 @@ function Page:onCloseWidget()
     self._closed = true
     if self._cover_poll_timer then UIManager:unschedule(self._cover_poll_timer); self._cover_poll_timer = nil end
     if self._download_timer then UIManager:unschedule(self._download_timer); self._download_timer = nil end
+    if self._task_refresh_timer then UIManager:unschedule(self._task_refresh_timer); self._task_refresh_timer = nil end
     self:freeItems()
+    self._painted_layout, self._refresh_layout = nil, nil
+    self._clock_item, self._battery_item = nil, nil
     if M._instance == self then M._instance = nil end
     local HS = package.loaded["weui_homescreen"]
     if HS and HS._instance == self then HS._instance = nil end

@@ -6,15 +6,20 @@ local root = assert(os.getenv("WEUI_PAPER_QA_ROOT"))
 local lfs = require("libs/libkoreader-lfs")
 assert(lfs.mkdir(root .. "/artifacts/frames"))
 local log = assert(io.open(root .. "/artifacts/refreshes.tsv", "w"))
-log:write("frame\tstage\tmode\tvisible\twidgets\n")
+log:write("frame\tstage\tmode\tvisible\twidgets\tregions\tarea_percent\n")
 local original = assert(Screen._render, "refresh trace requires the native SDL renderer")
 Screen._render = function(self, bb, ...)
         local result = original(self, bb, ...)
         local manager = package.loaded["ui/uimanager"]
         if manager then
             local stack, visible = {}, "none"
-            local modes = {}
-            for _, refresh in ipairs(manager._refresh_stack) do modes[#modes + 1] = refresh.mode end
+            local modes, regions, area = {}, {}, 0
+            for _, refresh in ipairs(manager._refresh_stack) do
+                modes[#modes + 1] = refresh.mode
+                local r = refresh.region
+                regions[#regions + 1] = string.format("%d,%d,%d,%d", r.x, r.y, r.w, r.h)
+                area = area + r.w * r.h
+            end
             for _, entry in ipairs(manager._window_stack) do
                 local w = entry.widget
                 local label = w._weui_paper_return_blocker and "reader-snapshot"
@@ -31,7 +36,8 @@ Screen._render = function(self, bb, ...)
             end
             M.frames = M.frames + 1
             local filename = string.format("%05d-%s.png", M.frames, M.stage)
-            log:write(filename, "\t", M.stage, "\t", table.concat(modes, ","), "\t", visible, "\t", table.concat(stack, ">"), "\n")
+            log:write(filename, "\t", M.stage, "\t", table.concat(modes, ","), "\t", visible, "\t", table.concat(stack, ">"),
+                "\t", table.concat(regions, ";"), "\t", string.format("%.3f", area * 100 / (bb.w * bb.h)), "\n")
             log:flush()
             assert(bb:writePNG(root .. "/artifacts/frames/" .. filename))
         end

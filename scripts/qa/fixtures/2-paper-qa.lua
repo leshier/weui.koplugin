@@ -705,11 +705,15 @@ add("47-room-favorites-sheet", function()
     local sheet = Paper._instance
     assert(sheet._weui_paper_sheet and sheet.screen == "favorites" and topWidget() == sheet, "favorites shortcut still opens legacy UI")
     assert(sheet.origin_page == sheet_origin and plugin.active_action == "homescreen", "favorites lost room origin")
-    assert(#Data.filter(sheet.books, "", "favorites") == 3 and hasText(sheet, "3 本收藏 · 4 个书籍分组"), "favorites/group real data")
-    assert(not hasText(sheet, titles[2]) and hasText(sheet, Privacy.privateTitle()), "favorite private title leaked")
-    assert(math.abs(sheet.panel_h - 522.6) < 0.01, "favorites paragraph spacing differs from design")
-    assert(sheet.panel_y >= 28 and sheet.panel_y + sheet.panel_h == sheet.logical_h - 18, "sheet bottom geometry")
-    geometry(sheet)
+    return function()
+        if Data.isScanning() then return false end
+        assert(#Data.filter(sheet.books, "", "favorites") == 3 and hasText(sheet, "3 本收藏 · 4 个书籍分组"), "favorites/group real data")
+        assert(not hasText(sheet, titles[2]) and hasText(sheet, Privacy.privateTitle()), "favorite private title leaked")
+        assert(math.abs(sheet.panel_h - 522.6) < 0.01, "favorites paragraph spacing differs from design")
+        assert(sheet.panel_y >= 28 and sheet.panel_y + sheet.panel_h == sheet.logical_h - 18, "sheet bottom geometry")
+        geometry(sheet)
+        return true
+    end
 end)
 add("48-favorites-group", function()
     local sheet = Paper._instance
@@ -1036,16 +1040,20 @@ add("72-book-delete-from-favorites", function()
     confirm.ok_callback(); UIManager:close(confirm)
     local lfs = require("libs/libkoreader-lfs")
     assert(not lfs.attributes(delete_path) and not lfs.attributes(delete_sidecar), "file or native metadata retained")
-    assert(topWidget() == sheet and not hasText(sheet, delete_book.title), "favorites retained deleted book")
-    for _, book in ipairs(sheet.origin_page.books) do assert(book.filepath ~= delete_path, "background retained deleted book") end
-    for _, item in ipairs(require("readhistory").hist) do assert(item.file ~= delete_path, "history retained deleted file") end
-    for _, coll in pairs(require("readcollection").coll) do assert(not coll[delete_path], "collection retained deleted file") end
-    for _, path in ipairs(require("weui_store"):get("weui_library_files") or {}) do
-        assert(path ~= delete_path, "import list retained deleted file")
+    return function()
+        if Data.isScanning() then return false end
+        assert(topWidget() == sheet and not hasText(sheet, delete_book.title), "favorites retained deleted book")
+        for _, book in ipairs(sheet.origin_page.books) do assert(book.filepath ~= delete_path, "background retained deleted book") end
+        for _, item in ipairs(require("readhistory").hist) do assert(item.file ~= delete_path, "history retained deleted file") end
+        for _, coll in pairs(require("readcollection").coll) do assert(not coll[delete_path], "collection retained deleted file") end
+        for _, path in ipairs(require("weui_store"):get("weui_library_files") or {}) do
+            assert(path ~= delete_path, "import list retained deleted file")
+        end
+        local saved = require("luasettings"):open(root .. "/settings/weui/weui_settings.lua")
+        for _, path in ipairs(saved:readSetting("weui_library_files") or {}) do assert(path ~= delete_path, "deleted import not persisted") end
+        geometry(sheet); sheet:dismiss()
+        return true
     end
-    local saved = require("luasettings"):open(root .. "/settings/weui/weui_settings.lua")
-    for _, path in ipairs(saved:readSetting("weui_library_files") or {}) do assert(path ~= delete_path, "deleted import not persisted") end
-    geometry(sheet); sheet:dismiss()
 end)
 add("73-private-book-delete-password", function()
     Privacy.setAutoLockMinutes(0)
@@ -1445,8 +1453,11 @@ add("93a-weread-task-progress", function()
     paper_task = wr.downloader:_newTask("book", "纸页下载测试", 24)
     wr.downloader:showTask(paper_task)
     wr.downloader:_updateTask(paper_task, { status = "running", progress = 12, stage = "正在下载章节" })
-    assert(topWidget().view.kind == "task" and hasText(topWidget(), "50%"), "paper download progress not updated")
-    geometry(topWidget())
+    return function()
+        assert(topWidget().view.kind == "task", "paper task sheet missing")
+        geometry(topWidget())
+        return hasText(topWidget(), "50%")
+    end
 end)
 add("93b-weread-task-completion", function()
     wr.downloader:_updateTask(paper_task, { status = "done", progress = 24, output_path = files[6] })
@@ -1576,6 +1587,7 @@ end
 -- Register tools only after the plugin and all existing flows have run.
 add("106-tools-register", function()
     local previous = #stages
+    if os.getenv("WEUI_PAPER_REFRESH_ONLY") ~= "1" then
     if os.getenv("WEUI_PAPER_RESPONSIVENESS_ONLY") ~= "1" then
     if os.getenv("WEUI_PAPER_POLISH_ONLY") ~= "1" then
         dofile(root .. "/plugins/weui.koplugin/scripts/qa/fixtures/paper_tools_checks.lua")({
@@ -1592,6 +1604,15 @@ add("106-tools-register", function()
         add = add, Paper = Paper, plugin = plugin, topWidget = topWidget,
         geometry = geometry, root = root,
     })
+    end
+    if os.getenv("WEUI_PAPER_REFRESH_ONLY") == "1"
+            or os.getenv("WEUI_PAPER_POLISH_ONLY") ~= "1"
+            and os.getenv("WEUI_PAPER_RESPONSIVENESS_ONLY") ~= "1"
+            and os.getenv("WEUI_PAPER_TOOLS_ONLY") ~= "1" then
+        dofile(root .. "/plugins/weui.koplugin/scripts/qa/fixtures/paper_refresh_checks.lua")({
+            add = add, Paper = Paper, plugin = plugin, root = root, topWidget = topWidget,
+        })
+    end
     -- Insert the newly registered flows before the final teardown.
     local tools = {}
     for i = previous + 1, #stages do tools[#tools + 1] = stages[i] end
@@ -1664,7 +1685,8 @@ end
 userpatch.registerPatchPluginFunc("weui", function()
     if started then return end
     started = true
-    if os.getenv("WEUI_PAPER_POLISH_ONLY") == "1" or os.getenv("WEUI_PAPER_RESPONSIVENESS_ONLY") == "1" then
+    if os.getenv("WEUI_PAPER_POLISH_ONLY") == "1" or os.getenv("WEUI_PAPER_RESPONSIVENESS_ONLY") == "1"
+            or os.getenv("WEUI_PAPER_REFRESH_ONLY") == "1" then
         local selected = {}
         for _, stage in ipairs(stages) do
             if stage.name == "01-home" or stage.name == "106-tools-register"

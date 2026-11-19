@@ -17,6 +17,7 @@ local UIManager       = require("ui/uimanager")
 local InfoMessage     = require("ui/widget/infomessage")
 local Device          = require("device")
 local Screen          = Device.screen
+local Refresh         = require("weui_refresh")
 local logger          = require("logger")
 local _ = require("weui_i18n").translate
 
@@ -332,7 +333,7 @@ end
 -- Widget construction
 -- ---------------------------------------------------------------------------
 
-function M.buildTopbarWidget()
+function M.buildTopbarWidget(info)
     local screen_w  = Screen:getWidth()
     local side_m    = M.TOPBAR_SIDE_M()
     local pad_top   = M.TOPBAR_PAD_TOP()
@@ -340,8 +341,17 @@ function M.buildTopbarWidget()
     local total_h   = M.TOPBAR_H() + pad_top + pad_bot
     local face      = Font:getFace(SUIStyle.FACE_REGULAR, M.TOPBAR_FS())
     local icon_face = Font:getFace(SUIStyle.FACE_ICONS, M.TOPBAR_FS())
-    local info      = M.getTopbarInfo()
+    info            = info or M.getTopbarInfo()
     local tb_cfg    = getTopbarConfigCached()
+    local visual = {}
+    local function remember(...)
+        for i = 1, select("#", ...) do
+            local value = tostring(select(i, ...))
+            visual[#visual + 1] = #value .. ":" .. value
+        end
+    end
+    remember(screen_w, total_h, side_m, pad_top, pad_bot, face.hash, icon_face.hash,
+        _getBarFg(), _getBarBg())
 
     local item_builders = {
         clock = function()
@@ -395,6 +405,7 @@ function M.buildTopbarWidget()
 
     local function buildSideGroup(order)
         local group = HorizontalGroup:new{}
+        remember("side")
         local first = true
         local fg = _getBarFg()
         for _, key in ipairs(order) do
@@ -403,6 +414,7 @@ function M.buildTopbarWidget()
                 if builder then
                     local icon, label, is_nerd, max_w = builder()
                     if icon or (label and label ~= "") then
+                        remember(icon, label, is_nerd, max_w)
                         if not first then
                             group[#group + 1] = TextWidget:new{
                                 text = "  ", face = face, fgcolor = fg,
@@ -454,6 +466,7 @@ function M.buildTopbarWidget()
     end
 
     local show_swipe = (not center_has_items) and SUISettings:nilOrTrue("weui_topbar_swipe_indicator")
+    remember(center_has_items, show_swipe, M.TOPBAR_CHEVRON_FS(), _getTopbarScale())
     local center_w
     if center_has_items then
         center_w = CenterContainer:new{
@@ -480,12 +493,14 @@ function M.buildTopbarWidget()
         left_w, right_w, center_w,
     }
 
-    return FrameContainer:new{
+    local bar = FrameContainer:new{
         bordersize    = 0, padding = 0, margin = 0,
         padding_left  = side_m, padding_right = side_m,
         background    = _getBarBg(),
         row,
     }
+    bar._weui_visual_signature = table.concat(visual)
+    return bar
 end
 
 local function _showTopbarSettingsWindow(plugin)
@@ -626,21 +641,29 @@ function M.refresh(plugin)
     if (plugin and plugin._weui_suspended) or Device.screen_saver_mode then return end
     local UI    = require("weui_core")
     local stack = UI.getWindowStack()  -- read once
-    -- Each widget gets its own topbar instance. Sharing a single object across
-    -- multiple _navbar_containers is unsafe: replaceTopbar mutates overlap_offset
-    -- in-place, so the first paint would corrupt the offset seen by subsequent
-    -- containers holding the same reference.
-    local new_topbar = M.buildTopbarWidget()
-    -- Re-check suspended state after buildTopbarWidget() — the device may have
-    -- suspended during that call. If so, discard the widget and do not setDirty
-    -- or reschedule: onResume will restart the chain cleanly.
+    local info = M.getTopbarInfo()
     if (plugin and plugin._weui_suspended) or Device.screen_saver_mode then return end
     local seen = {}
     local function refreshWidget(w)
-        if not w or not w._navbar_container or seen[w] then return end
+        if not w or seen[w] then return end
         seen[w] = true
-        UI.replaceTopbar(w, new_topbar)
-        UIManager:setDirty(w, "ui")
+        if w.refreshStatusBar then w:refreshStatusBar() end
+        if not w._navbar_topbar then return end
+        -- Offsets are mutated by replaceTopbar: each window needs its own bar.
+        local new_topbar = M.buildTopbarWidget(info)
+        local old = w._navbar_topbar
+        if old._weui_visual_signature == new_topbar._weui_visual_signature
+                or not Refresh.awake(plugin) then new_topbar:free(); return end
+        local old_size, new_size = old:getSize(), new_topbar:getSize()
+        local offset = old.overlap_offset or { 0, 0 }
+        local d = old.dimen
+        local region = Geom:new{
+            x = d and d.x or offset[1], y = d and d.y or offset[2],
+            w = math.max(old_size.w, new_size.w), h = math.max(old_size.h, new_size.h),
+        }
+        if not UI.replaceTopbar(w, new_topbar) then new_topbar:free(); return end
+        old:free()
+        if Refresh.visible(w, stack) then UIManager:setDirty(w, "ui", region) end
     end
     refreshWidget(plugin.ui)
     for _, entry in ipairs(stack) do

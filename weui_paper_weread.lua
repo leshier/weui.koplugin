@@ -3,6 +3,7 @@ local Screen = require("device").screen
 local BB = require("ffi/blitbuffer")
 local Geom = require("ui/geometry")
 local UIManager = require("ui/uimanager")
+local Refresh = require("weui_refresh")
 local Config = require("weui_config")
 local lfs = require("libs/libkoreader-lfs")
 local ink, sub, rule = BB.gray(0.91), BB.gray(0.66), BB.gray(0.28)
@@ -24,6 +25,9 @@ function M.extend(Sheet, Paper)
 
     function View:release(view)
         if view and view.task then view.task.hidden = true end
+        if view == self.view and self._task_refresh_timer then
+            UIManager:unschedule(self._task_refresh_timer); self._task_refresh_timer = nil
+        end
         if not view or not view.handle then return end
         local handle = view.handle
         handle._closed = true
@@ -278,6 +282,25 @@ function M.extend(Sheet, Paper)
             task.output_path and self.view.read_callback or function() self:back() end, true)
     end
 
+    function View:onTaskUpdated(task)
+        if self._closed or not self.view or self.view.task ~= task or not Refresh.awake(self.plugin) then return end
+        local terminal = task.status ~= "queued" and task.status ~= "running"
+        if terminal and Refresh.top(self) then
+            if self._task_refresh_timer then UIManager:unschedule(self._task_refresh_timer); self._task_refresh_timer = nil end
+            self:rebuild()
+            return
+        end
+        if self._task_refresh_timer then return end
+        local function poll()
+            self._task_refresh_timer = nil
+            if self._closed or not self.view or self.view.task ~= task or not Refresh.awake(self.plugin) then return end
+            if Refresh.top(self) then self:rebuild()
+            else self._task_refresh_timer = poll; UIManager:scheduleIn(2, poll) end
+        end
+        self._task_refresh_timer = poll
+        UIManager:scheduleIn(2, poll)
+    end
+
     function View:rebuild()
         if self._closed then return end
         self:freeItems()
@@ -294,7 +317,7 @@ function M.extend(Sheet, Paper)
             elseif self.view.kind == "task" then self:drawTask()
             else self:drawRows() end
         end
-        UIManager:setDirty(self, "ui")
+        Refresh.update(self)
         self:scheduleCoverRefresh()
     end
 

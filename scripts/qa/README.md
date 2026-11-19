@@ -27,6 +27,24 @@ sh scripts/qa/run_paper_qa.sh
 python3 scripts/qa/run_paper_upgrade_qa.py
 ```
 
+The Kindle refresh budget can be exercised independently:
+
+```sh
+WEUI_PAPER_REFRESH_ONLY=1 EMULATE_READER_W=1072 EMULATE_READER_H=1448 \
+sh scripts/qa/run_paper_qa.sh
+```
+
+`refresh-budget.tsv` records native queued regions as a percentage of the screen.
+The fixture independently renders the current model and checks that every changed
+grayscale pixel lies inside a queued refresh. It covers unchanged/hidden downloads,
+shrinking titles, progress reset, multiple rebuilds before painting, shared cover
+replacement, clocks, native periodic clearing and avoid-flashing settings,
+rotation, translucent text pagination, task coalescing, immediate completion,
+timer cancellation, and separate topbars for covered/visible windows. At 1072×1448,
+the idle poll queues no refresh, a single progress update covers about 2.84%, and
+the Paper clock covers about 0.12%. These are native SDL regression measurements;
+Kindle waveform timing, residual ghosting and battery effects require hardware.
+
 `WEUI_PAPER_RESPONSIVENESS_ONLY=1 sh scripts/qa/run_paper_qa.sh` exercises
 5 ms filesystem delays throughout a cold scan, an 800 ms buffered HTTP request,
 native dismissal of a 3-second request, cover worker launch failure and native
@@ -139,7 +157,8 @@ sh scripts/qa/run_paper_qa.sh
 ```
 
 Slow mode omits the two rapid navigation stress loops. `refreshes.tsv` records
-visible widgets and refresh modes; `frames/` contains every rendered frame.
+visible widgets, refresh modes, physical regions and total refresh area;
+`frames/` contains every rendered frame.
 Unexpected native FileManager frames during paper returns fail the suite.
 `WEUI_PAPER_OPEN_TRACE_ONLY=1` restricts it to reading/open/return reproduction.
 `WEUI_PAPER_FILES_TRACE_ONLY=1` covers More → Sources → Import and its returns.

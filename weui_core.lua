@@ -255,7 +255,7 @@ function M.replaceTopbar(widget, new_topbar)
         new_topbar.overlap_offset = container[idx].overlap_offset or { 0, 0 }
         container[idx]        = new_topbar
         widget._navbar_topbar = new_topbar
-        return
+        return true
     end
     for i, child in ipairs(container) do
         if child == widget._navbar_topbar then
@@ -263,7 +263,7 @@ function M.replaceTopbar(widget, new_topbar)
             container[i]              = new_topbar
             widget._navbar_topbar     = new_topbar
             widget._navbar_topbar_idx = i
-            return
+            return true
         end
     end
     logger.warn("weui: replaceTopbar could not find topbar in container — skipping")

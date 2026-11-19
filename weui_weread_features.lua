@@ -29,7 +29,7 @@ function M.init(self)
         show_task = function(task) return self:showPaperDownloadTask(task) end,
         task_updated = function(task)
             local page = require("weui_paper").weReadOrigin(self)
-            if page and page.view and page.view.task == task then page:rebuild() end
+            if page and page.view and page.view.task == task then page:onTaskUpdated(task) end
         end,
     }
     require("weread.lib.migrations").run(self.settings, self.client)

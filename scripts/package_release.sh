@@ -38,7 +38,7 @@ rsync -a \
 
 for required in \
     _meta.lua main.lua weui_initialize.lua weui_paper.lua weui_paper_groups.lua weui_migrations.lua weui_network.lua \
-    weui_paper_stats.lua weui_paper_downloads.lua \
+    weui_paper_stats.lua weui_paper_downloads.lua weui_refresh.lua \
     weui_weread_features.lua lib/weread_client.lua lib/weread_downloader.lua \
     weread/UPSTREAM.md weread/lib/settings.lua weread/lib/downloader.lua \
     zlibrary/embedded_plugin.lua zlibrary/runtime_locale.lua \

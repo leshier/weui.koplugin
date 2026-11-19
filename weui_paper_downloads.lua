@@ -1,5 +1,6 @@
 -- Persistent WeRead task history, with actions and a bounded visible refresh.
 local UIManager = require("ui/uimanager")
+local Refresh = require("weui_refresh")
 local BB = require("ffi/blitbuffer")
 local Config = require("weui_config")
 local lfs = require("libs/libkoreader-lfs")
@@ -8,7 +9,61 @@ local labels = { queued = "等待下载", running = "正在下载", done = "已�
     failed = "失败 · 可重试", cancelled = "已取消", interrupted = "已中断 · 可继续" }
 local M = {}
 
+local function taskList(page, wr)
+    local filtered, active_count = {}, 0
+    local tasks = wr and wr.downloader and wr.downloader:getTasks() or {}
+    for _, task in ipairs(tasks) do
+        local active = task.status == "queued" or task.status == "running"
+        if active then active_count = active_count + 1 end
+        local key = active and "active" or task.status == "done" and "done" or "stopped"
+        if page.state.download_filter == "all" or page.state.download_filter == key then
+            filtered[#filtered + 1] = task
+        end
+    end
+    return filtered, active_count
+end
+
+local function taskRatio(task)
+    return math.max(0, math.min(1, (tonumber(task.progress) or 0) / math.max(1, tonumber(task.total) or 1)))
+end
+
+local function visibleState(page, tasks)
+    local pages = math.max(1, math.ceil(#tasks / 4))
+    local current = math.min(page.state.download_page or 1, pages)
+    local out = { tostring(current), tostring(pages) }
+    for i = 1, 4 do
+        local task = tasks[(current - 1) * 4 + i]
+        if task then
+            for _, value in ipairs({ task.id or "", task.title or "微信读书", task.status or "",
+                    string.format("%.0f%%", taskRatio(task) * 100), tostring(page:px(480 * taskRatio(task))) }) do
+                value = tostring(value)
+                out[#out + 1] = #value .. ":" .. value
+            end
+        end
+    end
+    return table.concat(out, "|")
+end
+
 function M.apply(Page, Paper)
+    function Page:scheduleDownloadRefresh(wr)
+        if self._download_timer then UIManager:unschedule(self._download_timer) end
+        local function poll()
+            self._download_timer = nil
+            if self._closed or self.screen ~= "downloads" then return end
+            if not Refresh.awake(self.plugin) then return end -- onResume restarts it
+            local tasks, active_count = taskList(self, wr)
+            if Paper._instance == self and Refresh.top(self)
+                    and visibleState(self, tasks) ~= self._download_visible_state then
+                self:rebuild()
+            elseif active_count > 0 or not Refresh.top(self) then
+                self._download_timer = poll
+                UIManager:scheduleIn(2, poll)
+            end
+        end
+        self._download_timer = poll
+        UIManager:scheduleIn(2, poll)
+    end
+
     function Page:downloadNextPage(delta)
         self.state.download_page = math.max(1, math.min((self.state.download_page or 1) + delta, self.download_pages or 1))
         self:rebuild()
@@ -44,16 +99,10 @@ function M.apply(Page, Paper)
         if self._download_timer then UIManager:unschedule(self._download_timer); self._download_timer = nil end
         self.state.download_filter = self.state.download_filter or "all"
         local wr = self.plugin._weread_plugin or self.plugin:_initWeReadModule()
-        local tasks = wr and wr.downloader and wr.downloader:getTasks() or {}
         self:toolHeader("下载管理", "微信读书任务自动保存，重启后可继续")
         local filters = { { "all", "全部" }, { "active", "下载中" }, { "done", "已完成" }, { "stopped", "已停止" } }
-        local filtered, active_count = {}, 0
-        for _, task in ipairs(tasks) do
-            local active = task.status == "queued" or task.status == "running"
-            if active then active_count = active_count + 1 end
-            local key = active and "active" or task.status == "done" and "done" or "stopped"
-            if self.state.download_filter == "all" or self.state.download_filter == key then filtered[#filtered + 1] = task end
-        end
+        local filtered, active_count = taskList(self, wr)
+        self._download_visible_state = visibleState(self, filtered)
         for i, entry in ipairs(filters) do
             local id, x = entry[1], 28 + (i - 1) * 120
             self:text(entry[2], x, 180, 120, 12, { align = "center", bold = self.state.download_filter == id })
@@ -68,7 +117,7 @@ function M.apply(Page, Paper)
             local task = filtered[(self.state.download_page - 1) * 4 + i]
             if task then
                 local y = 224 + (i - 1) * 73
-                local ratio = math.max(0, math.min(1, (tonumber(task.progress) or 0) / math.max(1, tonumber(task.total) or 1)))
+                local ratio = taskRatio(task)
                 self:text(task.title or "微信读书", 28, y, 480, 15, { font = "song" })
                 self:text(labels[task.status] or task.status, 28, y + 29, 340, 10, { color = sub })
                 self:text(string.format("%.0f%%", ratio * 100), 388, y + 29, 120, 10, { align = "right", color = sub })
@@ -94,11 +143,7 @@ function M.apply(Page, Paper)
             Paper.showFilePicker(self, "read", require("zlibrary.config").getDownloadDir())
         end)
         if active_count > 0 then
-            self._download_timer = function()
-                self._download_timer = nil
-                if not self._closed and self.screen == "downloads" and Paper._instance == self then self:rebuild() end
-            end
-            UIManager:scheduleIn(1, self._download_timer)
+            self:scheduleDownloadRefresh(wr)
         end
     end
 end

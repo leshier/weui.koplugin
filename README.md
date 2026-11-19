@@ -3,6 +3,22 @@
 A paper-style interface for KOReader, optimized for Kindle e-ink devices, with integrated
 WeRead (微信读书) and Z-Library book sources.
 
+## What's new in 1.5.5
+
+- Paper pages refresh the area containing changed text, progress bars and covers.
+  Bounds include the old content so shorter text and reset progress are cleared.
+  Unchanged layouts do not request a refresh.
+- Download management checks visible progress every two seconds and skips
+  unchanged, covered and suspended pages. Download details combine progress
+  updates, with immediate feedback on completion, failure and cancellation.
+- Clock and battery updates repaint only the status area. Each native window
+  has its own topbar, with covered windows excluded from screen refresh requests.
+- Large content changes retain KOReader's native partial refresh and periodic
+  clearing, including its avoid-flashing and night-mode settings.
+- Regression covers changed-pixel bounds, translucent sheets, rotation,
+  suspend/resume and timer cleanup. Refresh-area measurements come from native
+  Mac/SDL checks; Kindle ghosting and waveform timing require hardware testing.
+
 ## Clean initialization package (v1.5.4)
 
 If KOReader exits after an upgrade and you want to start with fresh WeUI settings,
@@ -254,7 +270,8 @@ Enabling `Use Z-Library proxy for We UI updates` forces version checks, HTTPS
 redirects, and package downloads through the proxy from the first request.
 Other KOReader traffic keeps its original route.
 
-The installed version is read from `_meta.lua`; releases are tagged `vX.Y.Z`.
+The installed version is read from `_meta.lua`; new releases are tagged `X.Y.Z`.
+Older `vX.Y.Z` tags remain supported.
 
 ## Disclaimer
 
