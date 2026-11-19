@@ -72,7 +72,8 @@ return function(ctx)
         checkNavbar(empty, "weui_settings")
         empty:handleEvent(require("ui/event"):new("Gesture", {
             ges = "tap", pos = require("ui/geometry"):new{
-                x = 24 + 3.5 * 488 / 5, y = require("device").screen:getHeight() - 30,
+                x = empty._navbar_bar.offset + empty._navbar_bar:px(24 + 3.5 * 488 / 5),
+                y = require("device").screen:getHeight() - 30,
             },
         }))
         assert(top() == Paper._instance and Paper._instance.screen == "stats_calendar",
@@ -177,10 +178,13 @@ return function(ctx)
         bim:deleteBookInfo(cover_path)
         page.state.query, page.state.filter = "自动封面测试", "all"
         assert(Library.import(cover_path))
-        assert(has(page, "自动封面测试"), "import did not refresh visible book list")
-        assert(page._cover_poll_timer, "new cover extraction refresh not scheduled")
         return function()
-            return not page._pending_cover_files[require("ffi/util").realpath(cover_path)]
+            if Library.isScanning() then return false end
+            local path = require("ffi/util").realpath(cover_path)
+            local found
+            for _, book in ipairs(page.books) do if book.filepath == path then found = true; break end end
+            assert(found and has(page, "自动封面测试"), "import did not refresh visible book list")
+            return not page._pending_cover_files[path] and not page._cover_poll_timer
         end
     end)
     add("106zh-new-book-cover-ready", function()

@@ -3,6 +3,7 @@ local UIManager = require("ui/uimanager")
 local Collections = require("readcollection")
 local Library = require("weui_library")
 local Privacy = require("weui_privacy")
+local Config = require("weui_config")
 local util = require("util")
 local M = {}
 
@@ -182,7 +183,7 @@ function M.extend(Sheet)
             title = Privacy.isCollectionRevealed(name) and name or "私密分组"
             local books = self:groupBooks(self.group)
             intro = #books .. " 本书"
-            self.entries[1] = { label = "添加或移除书籍", meta = "›",
+            self.entries[1] = { label = "添加或移除书籍", meta = "›", icon_path = Config.ICON.weui_import,
                 callback = function() self:chooseBooks() end }
             for _, book in ipairs(books) do self.entries[#self.entries + 1] = self:bookEntry(book) end
             footer = { text = "分组选项", callback = function() self:groupOptions() end }
@@ -196,7 +197,8 @@ function M.extend(Sheet)
             end)
             title = self.target_book and "设置书籍分组" or "书籍分组"
             intro = self.target_book and "点击分组加入或移出书籍" or #names .. " 个自定义分组"
-            self.entries[1] = { label = "+ 新建分组", meta = "›", callback = function() self:editName() end }
+            self.entries[1] = { label = "+ 新建分组", meta = "›", icon_path = Config.ICON.weui_import,
+                callback = function() self:editName() end }
             for _, name in ipairs(names) do
                 local revealed = Privacy.isCollectionRevealed(name)
                 local meta = revealed and (#self:groupBooks({ name = name }) .. " 本") or "已锁定"
@@ -205,6 +207,7 @@ function M.extend(Sheet)
                 end
                 self.entries[#self.entries + 1] = {
                     label = revealed and name or "私密分组", meta = meta,
+                    icon_path = revealed and Config.ICON.group or Config.ICON.weui_privacy,
                     callback = function()
                         if self.target_book then self:toggleBook(name) else self:openGroup({ name = name }) end
                     end,

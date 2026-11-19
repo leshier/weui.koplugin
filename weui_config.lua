@@ -1207,7 +1207,7 @@ function M.flushCoverQueue()
     M._cover_extract_queue = {}
     if not bim then
         for _, fp in ipairs(queue) do M._cover_extract_pending[fp] = nil; M._cover_extract_specs[fp] = nil end
-        return
+        return false
     end
     local files = {}
     for _, fp in ipairs(queue) do
@@ -1218,10 +1218,16 @@ function M.flushCoverQueue()
         end
         M._cover_extract_specs[fp] = nil
     end
-    local ok = pcall(bim.extractInBackground, bim, files)
-    if not ok then
-        for _, fp in ipairs(queue) do M._cover_extract_pending[fp] = nil end
+    if #files == 0 then return false end
+    local ok, launched = pcall(bim.extractInBackground, bim, files)
+    if not ok or launched == false then
+        for _, fp in ipairs(queue) do
+            M._cover_extract_pending[fp] = nil
+            _markNoCover(fp)
+        end
+        return false
     end
+    return true
 end
 
 -- ===========================================================================

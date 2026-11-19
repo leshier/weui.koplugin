@@ -37,7 +37,7 @@ rsync -a \
     "$repo_dir/" "$work_dir/weui.koplugin/"
 
 for required in \
-    _meta.lua main.lua weui_paper.lua weui_paper_groups.lua weui_migrations.lua \
+    _meta.lua main.lua weui_paper.lua weui_paper_groups.lua weui_migrations.lua weui_network.lua \
     weui_paper_stats.lua weui_paper_downloads.lua \
     weui_weread_features.lua lib/weread_client.lua lib/weread_downloader.lua \
     weread/UPSTREAM.md weread/lib/settings.lua weread/lib/downloader.lua \

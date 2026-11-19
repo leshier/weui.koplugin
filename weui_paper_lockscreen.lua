@@ -24,7 +24,7 @@ function M.extend(Page)
         self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
         self.items, self.hits, self.books = {}, {}, {}
         -- Copy before masking, even if the in-app privacy session is unlocked.
-        for _, source in ipairs(self.mode ~= "calendar" and Library.books(self.plugin) or {}) do
+        for _, source in ipairs(self.mode ~= "calendar" and Library.snapshot() or {}) do
             local book = {}
             for key, value in pairs(source) do book[key] = value end
             if Privacy.isPrivateBook(book.filepath, book.title) then

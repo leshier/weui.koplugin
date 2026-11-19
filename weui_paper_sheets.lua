@@ -77,8 +77,9 @@ function M.extend(Page, Paper)
         return y + 83
     end
 
-    function Sheet:sheetRow(label, meta, y, callback, hold, selected)
-        self:lineText(label, 38, y, 330, 12, 47)
+    function Sheet:sheetRow(label, meta, y, callback, hold, selected, icon_path)
+        if icon_path then self:icon(icon_path, 40, y + 13, 22) end
+        self:lineText(label, icon_path and 76 or 38, y, icon_path and 292 or 330, 12, 47)
         self:lineText(meta or "", 374, y, 124, 10, 47, { align = "right", color = sub })
         if selected then self:lineText("✓", 469, y, 29, 15, 47, { align = "right" }) end
         self:rect(38, y + 47, 460, 1, list_rule)
@@ -160,6 +161,7 @@ function M.extend(Page, Paper)
                 local revealed = not group.name or Privacy.isCollectionRevealed(group.name)
                 entries[#entries + 1] = {
                     label = group.label or (revealed and Library.collectionDisplayName(group.name) or "私密分组"),
+                    icon_path = revealed and Config.ICON.group or Config.ICON.weui_privacy,
                     meta = revealed and (#self:groupBooks(group) .. " 本") or "已锁定",
                     group = group, callback = function() self:openGroup(group) end,
                 }
@@ -195,7 +197,7 @@ function M.extend(Page, Paper)
                 self:lineText(entry.section, 38, y + 12, 460, 12, 22.8, { color = sub })
                 y = y + 46.8
             else
-                self:sheetRow(entry.label, entry.meta, y, entry.callback, entry.hold, entry.selected)
+                self:sheetRow(entry.label, entry.meta, y, entry.callback, entry.hold, entry.selected, entry.icon_path)
                 y = y + 48
             end
         end
@@ -305,7 +307,7 @@ function M.extend(Page, Paper)
         self.offset = math.floor((Screen:getWidth() - self:px(536)) / 2)
         self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
         self.items, self.hits = {}, {}
-        self.books = Library.books(self.plugin, force)
+        self.books = Library.books(self.plugin, force, true)
         if self.screen == "reading_goals" then
             if self.picking_annual then self:annualChoices() else self:goals() end
         else self:list() end

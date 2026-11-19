@@ -130,9 +130,9 @@ function Page:icon(path, x, y, size)
     local widget = ImageWidget:new{ file = path, width = self:px(size), height = self:px(size), is_icon = true, alpha = true }
     self.items[#self.items + 1] = { widget = widget, x = self:px(x), y = self:px(y) }
 end
-function Page:iconButton(path, x, y, callback)
+function Page:iconButton(path, x, y, callback, label)
     self:icon(path, x + 13, y + 13, 22)
-    self:hit(x, y, 48, 48, callback)
+    self:hit(x, y, 48, 48, callback, label and function() toast(label) end)
 end
 function Page:button(label, x, y, w, callback, solid)
     if solid then self:rect(x, y, w, 48, ink)
@@ -384,9 +384,9 @@ function Page:empty(title, text, y, callback)
 end
 function Page:library()
     local books = self.books
-    self:heading("书架", "我的书籍 · " .. #books .. " 本")
-    self:button("书籍分组", 239, 48, 100, function() M.showGroups(self) end)
-    self:button("+ 添加书籍", 349, 48, 110, function() self:showSources() end)
+    self:heading("书架", (Library.isScanning() and "正在整理书架 · " or "我的书籍 · ") .. #books .. " 本")
+    self:iconButton(Config.ICON.group, 358, 48, function() M.showGroups(self) end, "书籍分组")
+    self:iconButton(Config.ICON.weui_import, 412, 48, function() self:showSources() end, "添加书籍")
     self:iconButton(Config.ICON.weui_menu, 466, 48, function() self:libraryOptions() end)
     self:search(123, "搜索书名、作者或标签", function() self:askSearch() end)
     local counts = { all = #books, reading = 0, unread = 0, done = 0 }
@@ -396,7 +396,9 @@ function Page:library()
     local result = Library.filter(books, self.state.query, self.state.filter, self.state.sort)
     self:pager(#result, 6)
     if #result == 0 then
-        self:empty("这里还没有书", self.state.query ~= "" and "试试另一个书名或作者。" or "从「添加书籍」导入，或选择线上来源。", 307,
+        self:empty(Library.isScanning() and "正在整理书架" or "这里还没有书",
+            Library.isScanning() and "书籍会自动显示，可以先切换到其他页面。"
+            or self.state.query ~= "" and "试试另一个书名或作者。" or "从右上方添加图标导入，或选择线上来源。", 307,
             function() self.state.query, self.state.filter = "", "all"; self:rebuild() end)
         return
     end
@@ -757,13 +759,12 @@ function Page:weread()
     self:iconButton(Config.ICON.weui_menu, 466, 78, function() self.wr:showMainMenu() end)
     local account = self.wr.settings:get("account") or {}
     self:text(account.name and account.name ~= "" and account.name or "尚未连接账号", 28, 129, 340, 11, { color = sub })
-    self:button("获取最新", 398, 122, 110, function()
+    self:iconButton(Config.ICON.zlibrary_refresh, 466, 122, function()
         self.wr:safeCallback("获取书架", function() self.wr:showBookshelf() end)()
-    end)
+    end, "获取最新书架")
     self:search(177, "搜索线上书架中的书名或作者", function() self:askSearch() end)
     self:filters({ { "all", "书籍", 100 }, { "mp", "公众号", 110 } }, 224)
-    self:text("筛选", 242, 236, 56, 11, { color = sub })
-    self:hit(238, 224, 60, 43, function() self.wr:showShelfOptions() end)
+    self:iconButton(Config.ICON.weread_filter, 238, 224, function() self.wr:showShelfOptions() end, "筛选书架")
     self:lineSortWeRead()
     local source = self.wr:getPaperShelfBooks(self.state.filter)
     local books = {}
@@ -804,7 +805,7 @@ function Page:weread()
     end
     if #books == 0 then
         self:empty(self.state.query ~= "" and "没有匹配的书籍" or "线上书架还没有书",
-            self.state.query ~= "" and "修改书名或作者，再试一次。" or "点击「获取最新」，连接账号并同步书架。", 357)
+            self.state.query ~= "" and "修改书名或作者，再试一次。" or "点击右上方刷新图标，连接账号并同步书架。", 357)
         return
     end
     local row_h = (self.body_bottom - 40 - 279) / 2
@@ -828,8 +829,7 @@ function Page:weread()
 end
 function Page:lineSortWeRead()
     local labels = { time_desc = "最近阅读", time_asc = "最早阅读", name_asc = "书名升序", name_desc = "书名降序", default = "默认顺序" }
-    self:text(labels[self.wr.settings:get("shelf").sort_order] or "最近阅读", 366, 236, 142, 11, { align = "right", color = sub })
-    self:hit(358, 224, 150, 43, function()
+    self:iconButton(Config.ICON.weread_sort, 412, 224, function()
         local entries = {}
         for _, id in ipairs({ "time_desc", "time_asc", "name_asc", "name_desc", "default" }) do
             entries[#entries + 1] = { text = labels[id], callback = function()
@@ -839,7 +839,7 @@ function Page:lineSortWeRead()
             end }
         end
         M.showWeReadView(self.wr, { kind = "list", title = "书架排序", items = entries })
-    end)
+    end, labels[self.wr.settings:get("shelf").sort_order] or "最近阅读")
 end
 function Page:navbar()
     local tabs = self.navbar_tabs or Config.loadTabConfig()
@@ -893,7 +893,10 @@ function Page:rebuild(force)
     self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
     self.items, self.hits = {}, {}
     self._pending_cover_files = {}
-    self.books = self.wr and {} or Library.books(self.plugin, force)
+    local needs_books = self.screen == "homescreen" or self.screen == "home" or self.screen == "notes"
+        or self.screen == "stats_calendar" or self.screen == "stats_details"
+    if force and not needs_books then Library.invalidate() end
+    self.books = self.wr and {} or needs_books and Library.books(self.plugin, force, true) or Library.snapshot()
     self:text(os.date("%H:%M"), 28, 10, 150, 11)
     local power = Device:getPowerDevice()
     local capacity = power and power.getCapacity and power:getCapacity()
@@ -913,9 +916,9 @@ function Page:scheduleCoverRefresh()
     if self._cover_poll_timer then UIManager:unschedule(self._cover_poll_timer); self._cover_poll_timer = nil end
     if not next(self._pending_cover_files or {}) then self._cover_poll_started = nil; return end
     self._cover_poll_started = self._cover_poll_started or os.time()
-    Config.flushCoverQueue()
+    if Config.flushCoverQueue() == false then return end
     if os.time() - self._cover_poll_started > 45 then return end
-    self._cover_poll_timer = function()
+    local function poll()
         self._cover_poll_timer = nil
         if self._closed or M._instance ~= self then return end
         local bim = Config.getBookInfoManager()
@@ -923,8 +926,16 @@ function Page:scheduleCoverRefresh()
         if not running then
             for path in pairs(self._pending_cover_files or {}) do Config._cover_extract_pending[path] = nil end
         end
-        self:rebuild()
+        if running then
+            if os.time() - self._cover_poll_started <= 45 then
+                self._cover_poll_timer = poll
+                UIManager:scheduleIn(1, poll)
+            end
+        else
+            self:rebuild()
+        end
     end
+    self._cover_poll_timer = poll
     UIManager:scheduleIn(1, self._cover_poll_timer)
 end
 function Page:getSize() return self.dimen end

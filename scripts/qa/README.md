@@ -12,6 +12,15 @@ sh scripts/qa/run_paper_qa.sh
 python3 scripts/qa/run_paper_upgrade_qa.py
 ```
 
+`WEUI_PAPER_RESPONSIVENESS_ONLY=1 sh scripts/qa/run_paper_qa.sh` exercises
+5 ms filesystem delays throughout a cold scan, an 800 ms buffered HTTP request,
+native dismissal of a 3-second request, cover worker launch failure and native
+action/menu icons. `responsiveness.tsv` records the initial scan and input
+latencies. The library yields between entries with an 8 ms work budget;
+buffered foreground HTTP runs through KOReader's cancellable subprocess
+mechanism. Runtime/settings trees are excluded, and settings/cookies remain
+parent-owned. Downloads retain the native streaming worker.
+
 It uses a new temporary `KO_HOME` for each run, original sample books and a
 separate SQLite database. It covers the five main pages, secondary sources,
 notes and export, reading goals, portrait/landscape layout, and opening a real

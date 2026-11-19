@@ -6,4 +6,7 @@ Extended.__index = Extended
 for name, method in pairs(Legacy) do
     if Client[name] == nil then Extended[name] = method end
 end
+function Extended:request(options)
+    return require("weui_network").request(self, options, Client.request)
+end
 return Extended

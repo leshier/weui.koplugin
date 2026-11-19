@@ -116,6 +116,7 @@ function M.extend(Sheet, Paper)
                 end
                 entries[#entries + 1] = {
                     label = clean(label), meta = clean(meta),
+                    icon_path = item.icon_path or (item.book and Config.ICON.weread_book or Config.ICON.ko_settings),
                     callback = enabled and callback and function()
                         callback(self.view.handle)
                         if not self._closed then self:rebuild() end
@@ -140,8 +141,9 @@ function M.extend(Sheet, Paper)
         self.view.page = self.state.page
     end
 
-    function View:sheetRow(label, meta, y, callback, hold, selected)
-        self:lineText(label, 38, y, 306, 12, 47, { color = callback and ink or sub })
+    function View:sheetRow(label, meta, y, callback, hold, selected, icon_path)
+        if icon_path then self:icon(icon_path, 40, y + 13, 22) end
+        self:lineText(label, icon_path and 76 or 38, y, icon_path and 268 or 306, 12, 47, { color = callback and ink or sub })
         self:lineText(meta or "", 350, y, 148, 10, 47, { align = "right", color = sub })
         self:rect(38, y + 47, 460, 1, BB.gray(0.2))
         self:hit(38, y, 460, 48, callback, hold)
@@ -218,18 +220,18 @@ function M.extend(Sheet, Paper)
         self:hit(38, y + 246, 460, intro_h, function() wr:showTextDetail("书籍简介", clean(book.intro or "暂无简介")) end)
         local row_y = y + 254 + intro_h
         local rows = {
-            { "章节与目录", function() wr:showChapterList(book) end },
+            { "章节与目录", function() wr:showChapterList(book) end, Config.ICON.weread_chapters },
             { "笔记与划线", function()
                 Paper.showWeReadView(wr, { kind = "list", title = "笔记与划线", key = "notes:" .. id, items = {
                     { text = "我的笔记", callback = function() wr:showBookNotes(book) end },
                     { text = "热门划线", callback = function() wr:showPopularHighlights(book) end },
                     { text = "公开书评", callback = function() wr:showPublicReviews(book, 0) end },
                 } })
-            end },
-            { "更多信息与操作", function() wr:showBookActions(book) end },
+            end, Config.ICON.weread_notes },
+            { "更多信息与操作", function() wr:showBookActions(book) end, Config.ICON.weui_menu },
         }
         for _, row in ipairs(rows) do
-            self:sheetRow(row[1], "›", row_y, wr:safeCallback(row[1], row[2]))
+            self:sheetRow(row[1], "›", row_y, wr:safeCallback(row[1], row[2]), nil, nil, row[3])
             row_y = row_y + 48
         end
         local buttons_y = self.panel_y + height - 70

@@ -1,7 +1,26 @@
 # We UI (`weui.koplugin`)
 
-A paper-style interface for KOReader, optimized for e-ink, with integrated
+A paper-style interface for KOReader, optimized for Kindle e-ink devices, with integrated
 WeRead (微信读书) and Z-Library book sources.
+
+## What's new in v1.5.3
+
+- Local library scans yield between directory entries and books, reuse each
+  metadata snapshot, and exclude KOReader's program and settings directories.
+  Pages that do not need the library skip scanning; sleep screens reuse a
+  completed local snapshot.
+- Buffered WeRead foreground requests run in cancellable subprocesses with
+  bounded timeouts. Book-detail covers load on demand, while UI callbacks and
+  cookie persistence stay in the parent process.
+- Failed cover workers stop repeated refresh attempts. Running extraction jobs
+  are polled without repainting the whole page each second.
+- Book groups, import, WeRead refresh, filtering and sorting use monochrome
+  action icons; long-press an icon for its label. Group and WeRead menu rows
+  retain their icons. The WeRead corner menu has six entries, with additional
+  tools in a submenu.
+- Automated regression includes slow storage, slow HTTP, request cancellation
+  and cover worker failures. Native Mac/SDL checks are supporting evidence;
+  Kindle hardware validation remains separate.
 
 ## What's new in v1.5.2
 

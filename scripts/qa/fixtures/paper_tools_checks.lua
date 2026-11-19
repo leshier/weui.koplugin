@@ -241,8 +241,8 @@ return function(ctx)
     add("106va-lockscreen-empty-state", function()
         local Library = require("weui_library")
         local Config = require("weui_config")
-        local books, db = Library.books, Config.getStatsDbPath
-        Library.books = function() return {} end
+        local books, db = Library.snapshot, Config.getStatsDbPath
+        Library.snapshot = function() return {} end
         Config.getStatsDbPath = function() return ctx.root .. "/missing-statistics.sqlite3" end
         local recent = Paper.newLockscreen("recent", plugin)
         assert(ctx.hasText(recent, "下一本书，等你翻开"), "empty recent lockscreen")
@@ -250,7 +250,7 @@ return function(ctx)
         local stats = Paper.newLockscreen("stats", plugin)
         assert(stats.snapshot_stats.seconds == 0 and ctx.hasText(stats, "今天，给阅读留一点时间"), "empty statistics lockscreen")
         stats:free()
-        Library.books, Config.getStatsDbPath = books, db
+        Library.snapshot, Config.getStatsDbPath = books, db
     end)
     add("106vb-native-extra-flash", function()
         G_reader_settings:saveSetting("screensaver_extra_flash_count", 1)

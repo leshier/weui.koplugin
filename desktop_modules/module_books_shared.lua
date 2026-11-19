@@ -550,7 +550,7 @@ function SH.invalidateSidecarCache(fp)
     end
 end
 
-function SH.getBookData(filepath, prefetched)
+function SH.getBookData(filepath, prefetched, snapshot)
     local meta = {}
     local percent, pages, md5, stat_pages, stat_total_time = 0, nil, nil, nil, nil
 
@@ -569,7 +569,8 @@ function SH.getBookData(filepath, prefetched)
         -- the lfs.attributes syscall and DS.open retry; fall through with defaults.
         local DS = getDocSettings()
         if DS and lfs.attributes(filepath, "mode") == "file" then
-            local ok2, ds = pcall(DS.open, DS, filepath)
+            local ok2, ds = true, snapshot
+            if not ds then ok2, ds = pcall(DS.open, DS, filepath) end
             if ok2 and ds then
                 percent         = ds:readSetting("percent_finished") or 0
                 pages           = ds:readSetting("doc_pages")

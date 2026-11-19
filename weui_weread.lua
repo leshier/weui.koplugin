@@ -87,6 +87,7 @@ end
 local function menu_item(icon_path, text, item)
     item = item or {}
     item.text = text
+    item.icon_path = icon_path
     item.state = make_menu_icon(icon_path)
     return item
 end
@@ -503,6 +504,44 @@ function WeReadPlugin:getAccountSummary()
 end
 
 function WeReadPlugin:showMainMenu()
+    if require("weui_paper").weReadOrigin(self) then
+        local function action(fn) return self:safeCallback(_("WeRead"), fn) end
+        return self:showList("微信读书设置", {
+            menu_item(Config.ICON.weread_account, "账号与登录", {
+                mandatory = select(1, self:getAccountSummary()),
+                callback = action(function()
+                    if self.settings:is_cookie_configured() or self.settings:is_api_configured() then
+                        self:showAccountStatus()
+                    else self.qr_login:start() end
+                end),
+            }),
+            menu_item(Config.ICON.weread_download, _("Download management"), {
+                callback = action(function() self:showDownloadTasks() end),
+            }),
+            menu_item(Config.ICON.weread_notes, _("Notes"), {
+                callback = action(function() self:showNotesOverview() end),
+            }),
+            menu_item(Config.ICON.random, _("Recommendations"), {
+                callback = action(function() self:showRecommendations() end),
+            }),
+            menu_item(Config.ICON.ko_settings, _("Settings"), {
+                sub_item_table_func = function() return self:getSettingsMenuItems() end,
+            }),
+            menu_item(Config.ICON.weui_menu, "更多工具", {
+                sub_item_table = {
+                    menu_item(Config.ICON.stats, _("Reading statistics"), {
+                        callback = action(function() self:showReadStats() end),
+                    }),
+                    menu_item(Config.ICON.collections, _("WeRead favorites"), {
+                        callback = action(function() self:showWereadCollection() end),
+                    }),
+                    menu_item(Config.ICON.weread_folder, _("Offline management"), {
+                        callback = action(function() require("ui/offline_manager").show() end),
+                    }),
+                },
+            }),
+        })
+    end
     local account_name, cookie_status, api_status = self:getAccountSummary()
     local active = self.downloader and self.downloader:getActiveCount() or 0
     local function open_over_page(_label, fn)
@@ -1742,6 +1781,7 @@ function WeReadPlugin:clearAllCache()
 end
 
 function WeReadPlugin:showInfo(text)
+    if require("weui_network").cancelled() then return end
     UIManager:show(InfoMessage:new{
         text = text,
     })
@@ -1758,7 +1798,7 @@ function WeReadPlugin:showBusy(text)
     self:closeBusy()
     self.busy_message = InfoMessage:new{
         text = text,
-        dismissable = false,
+        dismissable = true,
     }
     UIManager:show(self.busy_message)
     self:refreshUI()
@@ -1830,12 +1870,11 @@ function WeReadPlugin:runOnlineTask(label, callback, delay, background)
             self:closeBusy()
             return
         end
-        local ok, err = xpcall(callback, debug.traceback)
-        if not ok then
+        require("weui_network").run(self, callback, origin, view, function(err)
             self:closeBusy()
             logger.err(LOG_MODULE, "network task failed:", label, log_error(err))
             self:showInfo(T(_("%1 failed:\n%2"), label, display_error(err)))
-        end
+        end)
     end)
     return true
 end
@@ -1853,6 +1892,7 @@ function WeReadPlugin:runNetworkAction(label, action)
 end
 
 function WeReadPlugin:showList(title, items, empty_text, options)
+    if require("weui_network").cancelled() then return end
     options = options or {}
     if not items or #items == 0 then
         self:showInfo(empty_text or _("No items."))
@@ -2339,6 +2379,7 @@ function WeReadPlugin:queuePaperCover(book, page)
         self._paper_cover_pending[id] = nil
         if page._closed or page.view ~= view or require("weui_paper")._instance ~= page
                 or not self:isNetworkOnline() then return end
+        require("weui_network").run(self, function()
         local dir = require("datastorage"):getSettingsDir() .. "/weread_covers"
         local path = dir .. "/" .. id .. ".jpg"
         if file_exists(path) then return end
@@ -2360,6 +2401,7 @@ function WeReadPlugin:queuePaperCover(book, page)
         if image then image:free() end
         if valid then os.rename(temporary, path) else os.remove(temporary); self._paper_cover_failed[id] = true end
         if not page._closed and page.view == view then page:rebuild() end
+        end, page, view, function() self._paper_cover_failed[id] = true end)
     end)
 end
 

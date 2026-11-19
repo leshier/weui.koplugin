@@ -5107,6 +5107,9 @@ function M.teardownAll(plugin)
 
     Config.reset()
 
+    local Library = package.loaded["weui_library"]
+    if Library then Library.invalidate() end
+
     local Registry = package.loaded["desktop_modules/moduleregistry"]
     if Registry then Registry.invalidate() end
 

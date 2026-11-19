@@ -10,8 +10,12 @@ local Config = require("weui_config")
 local SH = require("desktop_modules/module_books_shared")
 local Privacy = require("weui_privacy")
 local logger = require("logger")
+local UIManager = require("ui/uimanager")
+local time = require("ui/time")
 local M = {}
 local cached, cached_at, cached_roots
+local scan_job
+local publish_task
 
 local function canonical(path)
     return type(path) == "string" and (ffiUtil.realpath(path) or path) or nil
@@ -36,7 +40,16 @@ function M.roots(plugin)
 end
 
 function M.invalidate()
-    cached, cached_at, cached_roots = nil, nil, nil
+    if scan_job and scan_job.timer then UIManager:unschedule(scan_job.timer) end
+    if publish_task then UIManager:unschedule(publish_task) end
+    scan_job, publish_task, cached_at = nil, nil, nil
+end
+
+function M.isScanning() return scan_job ~= nil or publish_task ~= nil end
+
+function M.snapshot()
+    -- Reuse the last completed index without starting work (e.g. suspend).
+    return cached or {}
 end
 
 function M.collectionDisplayName(name)
@@ -54,13 +67,13 @@ function M.refresh(path)
     if page and not page._closed then page:rebuild() end
 end
 
-function M.books(plugin, force)
-    local roots = M.roots(plugin)
-    local key = table.concat(roots, "\n")
-    if not force and cached and cached_roots == key and os.time() - cached_at < 60 then
-        return cached
-    end
+local function build(roots, step)
+    step = step or function() end
     local files, visited, readtimes, result = {}, {}, {}, {}
+    -- Device.home_dir may be /mnt/us. Do not index KOReader's program,
+    -- plugin fixtures, caches and settings as the user's library.
+    local runtime = canonical(lfs.currentdir())
+    local data_dir = canonical(require("datastorage"):getFullDataDir())
     local function add(path, attr)
         path = canonical(path)
         if path and not files[path] and Registry:hasProvider(path) then
@@ -70,7 +83,7 @@ function M.books(plugin, force)
     end
     local function scan(dir)
         dir = canonical(dir)
-        if not dir or visited[dir] then return end
+        if not dir or visited[dir] or dir == runtime or dir == data_dir then return end
         visited[dir] = true
         local ok, iter, obj = pcall(lfs.dir, dir)
         if not ok then return end
@@ -78,30 +91,35 @@ function M.books(plugin, force)
             if name:sub(1, 1) ~= "." and not name:match("%.sdr$") then
                 local path = dir .. "/" .. name
                 local attr = lfs.attributes(path)
-                if attr and attr.mode == "directory" then scan(path)
+                if attr and attr.mode == "directory" then
+                    local resolved = canonical(path)
+                    if resolved ~= runtime and resolved ~= data_dir then scan(path) end
                 elseif attr and attr.mode == "file" then add(path, attr) end
             end
+            step()
         end
     end
-    for _, dir in ipairs(roots) do scan(dir) end
-    for _, path in ipairs(Store:get("weui_library_files") or {}) do add(path) end
+    for _, path in ipairs(Store:get("weui_library_files") or {}) do add(path); step() end
     for _, item in ipairs(History.hist or {}) do
         local path = canonical(item.file)
         if path then
             add(path)
             readtimes[path] = tonumber(item.time) or 0
         end
+        step()
     end
     if not Collections.coll then Collections:_read() end
     for _, coll in pairs(Collections.coll or {}) do
-        for path in pairs(coll) do add(path) end
+        for path in pairs(coll) do add(path); step() end
     end
+    for _, dir in ipairs(roots) do scan(dir) end
     local favorites = (Collections.coll or {})[Collections.default_collection_name] or {}
     for path, attr in pairs(files) do
-        local data = SH.getBookData(path)
         local ds = DocSettings:open(path)
+        local data = SH.getBookData(path, nil, ds)
         local summary = ds:readSetting("summary") or {}
         local props = ds:readSetting("doc_props") or {}
+        data._privacy_title = props.title or data.title
         local tags = props.keywords or props.tags or ""
         if type(tags) == "table" then tags = table.concat(tags, " ") end
         -- DocSettings:close() flushes; these are read-only snapshots.
@@ -119,14 +137,75 @@ function M.books(plugin, force)
         data.private = Privacy.isPrivateBook(path, props.title) and not Privacy.isUnlocked()
         if data.private then data.tags, data.chapter = "", "" end
         result[#result + 1] = data
+        step()
     end
     table.sort(result, function(a, b)
         if a.last_read ~= b.last_read then return a.last_read > b.last_read end
         if a.modified ~= b.modified then return a.modified > b.modified end
         return a.filepath < b.filepath
     end)
-    cached, cached_at, cached_roots = result, os.time(), key
     return result
+end
+
+function M.books(plugin, force, incremental)
+    local roots = M.roots(plugin)
+    local key = table.concat(roots, "\n")
+    if not force and cached and cached_at and cached_roots == key and os.time() - cached_at < 60 then
+        return cached
+    end
+    if not incremental then
+        M.invalidate()
+        cached, cached_at, cached_roots = build(roots), os.time(), key
+        return cached
+    end
+    if force or scan_job and scan_job.key ~= key then M.invalidate() end
+    if not scan_job then
+        local job = { key = key }
+        job.co = coroutine.create(function() return build(roots, coroutine.yield) end)
+        scan_job = job
+        local function advance()
+            if scan_job ~= job then return end
+            job.timer = nil
+            local started = time.now()
+            repeat
+                local ok, value = coroutine.resume(job.co)
+                if not ok then
+                    scan_job = nil
+                    logger.warn("WeUI library scan failed:", value)
+                    return
+                end
+                if coroutine.status(job.co) == "dead" then
+                    cached, cached_at, cached_roots = value, os.time(), key
+                    scan_job = nil
+                    local Paper = package.loaded["weui_paper"]
+                    local page = Paper and Paper._instance
+                    if page and not page._closed and not page.wr then
+                        local publish
+                        publish = function()
+                            if publish_task ~= publish then return end
+                            publish_task = nil
+                            if not page._closed and Paper._instance == page then page:rebuild() end
+                        end
+                        publish_task = publish
+                        UIManager:nextTick(publish)
+                    end
+                    return
+                end
+            until time.to_s(time.since(started)) >= 0.008
+            job.timer = advance
+            UIManager:scheduleIn(0.05, advance)
+        end
+        advance()
+    end
+    -- A stale snapshot must not reveal a book after privacy settings changed.
+    for _, book in ipairs(cached or {}) do
+        if not Privacy.isUnlocked() and Privacy.isPrivateBook(book.filepath, book._privacy_title) then
+            book.private = true
+            book.title, book.authors = Privacy.privateTitle(), Privacy.privateAuthor()
+            book.tags, book.chapter = "", ""
+        end
+    end
+    return cached or {}
 end
 
 function M.filter(books, query, status, sort)

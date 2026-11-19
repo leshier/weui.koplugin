@@ -861,12 +861,16 @@ add("58-history-pagination", function()
     sheet_origin = Paper.navigate(plugin, "homescreen")
     sheet_origin:action("history")
     local sheet = Paper._instance
+    return function()
+    if Data.isScanning() then return false end
     assert(sheet.pages == 2 and #sheet.entries == 18, "history pagination lost records")
     sheet:onNextPage()
     assert(sheet.state.page == 2, "history next page")
     geometry(sheet)
     sheet:onPrevPage(); assert(sheet.state.page == 1, "history previous page")
     sheet:onSwipePaper(nil, { direction = "west" }); assert(sheet.state.page == 2, "history swipe pagination")
+    return true
+    end
 end)
 add("59-sheet-landscape", function()
     local sheet = Paper._instance
@@ -1401,7 +1405,7 @@ add("90-weread-stale-online-result", function()
     assert(wr_calls == wr_original.stale_count and Paper._instance.screen == "weui_settings", "late request reopened exited WeRead")
     wr:showShelfGrid(2, "books")
     local source = Paper._instance
-    tap(source, 430, 238)
+    tap(source, 436, 248)
     tapLabel(topWidget(), "书名降序")
     assert(Paper._instance == source and wr.settings:get("shelf").sort_order == "name_desc", "shelf sorting did not persist or return")
     geometry(source)
@@ -1572,6 +1576,7 @@ end
 -- Register tools only after the plugin and all existing flows have run.
 add("106-tools-register", function()
     local previous = #stages
+    if os.getenv("WEUI_PAPER_RESPONSIVENESS_ONLY") ~= "1" then
     if os.getenv("WEUI_PAPER_POLISH_ONLY") ~= "1" then
         dofile(root .. "/plugins/weui.koplugin/scripts/qa/fixtures/paper_tools_checks.lua")({
             add = add, Paper = Paper, plugin = plugin, tapLabel = tapLabel, topWidget = topWidget,
@@ -1581,6 +1586,11 @@ add("106-tools-register", function()
     dofile(root .. "/plugins/weui.koplugin/scripts/qa/fixtures/paper_polish_checks.lua")({
         add = add, Paper = Paper, plugin = plugin, tapLabel = tapLabel, topWidget = topWidget,
         closeToPage = closeToPage, geometry = geometry, hasText = hasText, root = root,
+    })
+    end
+    dofile(root .. "/plugins/weui.koplugin/scripts/qa/fixtures/paper_responsiveness_checks.lua")({
+        add = add, Paper = Paper, plugin = plugin, topWidget = topWidget,
+        geometry = geometry, root = root,
     })
     -- Insert the newly registered flows before the final teardown.
     local tools = {}
@@ -1654,7 +1664,7 @@ end
 userpatch.registerPatchPluginFunc("weui", function()
     if started then return end
     started = true
-    if os.getenv("WEUI_PAPER_POLISH_ONLY") == "1" then
+    if os.getenv("WEUI_PAPER_POLISH_ONLY") == "1" or os.getenv("WEUI_PAPER_RESPONSIVENESS_ONLY") == "1" then
         local selected = {}
         for _, stage in ipairs(stages) do
             if stage.name == "01-home" or stage.name == "106-tools-register"
